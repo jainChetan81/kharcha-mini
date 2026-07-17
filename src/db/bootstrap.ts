@@ -26,10 +26,35 @@ export function ensureSchema(): void {
       source_message_guid TEXT NOT NULL UNIQUE,
       sync_status TEXT NOT NULL CHECK(sync_status IN ('pending','synced')) DEFAULT 'pending',
       synced_at TEXT,
+      currency TEXT,
+      original_amount REAL,
+      needs_review INTEGER NOT NULL DEFAULT 0,
+      deleted_at TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
   `);
+
+  // Migration: installs predating the 2026-07-17 repair pass lack the
+  // currency/review/tombstone columns. Additive, idempotent.
+  const txColumns = sqlite
+    .query<{ name: string }, []>("PRAGMA table_info(transactions)")
+    .all()
+    .map((c) => c.name);
+  for (const [name, ddl] of [
+    ["currency", "ALTER TABLE transactions ADD COLUMN currency TEXT"],
+    [
+      "original_amount",
+      "ALTER TABLE transactions ADD COLUMN original_amount REAL",
+    ],
+    [
+      "needs_review",
+      "ALTER TABLE transactions ADD COLUMN needs_review INTEGER NOT NULL DEFAULT 0",
+    ],
+    ["deleted_at", "ALTER TABLE transactions ADD COLUMN deleted_at TEXT"],
+  ] as const) {
+    if (!txColumns.includes(name)) db.run(ddl);
+  }
 
   // Migration: older installs have parsed_by CHECK without 'manual'. Recreate
   // the table once if needed; SQLite does not support altering CHECK.

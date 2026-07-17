@@ -11,17 +11,24 @@ import { merchantAliases } from "./schema";
  * - strip trailing reference/txn keywords + their codes
  */
 export function normalizeMerchant(raw: string): string {
-  return raw
-    .toUpperCase()
-    .replace(/[^A-Z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\s+\d{6,}$/, "")
-    .replace(
-      /\s+(?:REF|RRN|UTR|TXN|TRANSACTION|ID|NO|NUMBER)\s*[A-Z0-9]+$/i,
-      "",
-    )
-    .trim();
+  return (
+    raw
+      .toUpperCase()
+      .replace(/[^A-Z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      // Payment-gateway/aggregator prefixes carry no merchant identity and
+      // fragment alias lookups ("PYU SWIGGY FOOD" vs "RAZ SWIGGY" vs
+      // "SWIGGY") — strip them before matching. 2026-07-17 audit: the top
+      // garbled-merchant patterns were all gateway-prefixed.
+      .replace(/^(?:PYU|RAZ|RSP|PTM|PAYU|RAZP|POS|WWW)\s+/, "")
+      .replace(/\s+\d{6,}$/, "")
+      .replace(
+        /\s+(?:REF|RRN|UTR|TXN|TRANSACTION|ID|NO|NUMBER)\s*[A-Z0-9]+$/i,
+        "",
+      )
+      .trim()
+  );
 }
 
 export interface AliasMatch {

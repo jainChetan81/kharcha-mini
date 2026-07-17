@@ -38,6 +38,16 @@ export const transactions = sqliteTable(
       .notNull()
       .default("pending"),
     syncedAt: text("synced_at"),
+    // ISO 4217 code for foreign-currency spends; NULL means INR-native.
+    currency: text("currency"),
+    // Amount in `currency` exactly as the SMS stated it (foreign spends only).
+    originalAmount: real("original_amount"),
+    // 1 = a human should sanity-check this row (fallback-FX conversion,
+    // unresolved merchant, category conflict from the repair pass, ...).
+    needsReview: integer("needs_review").notNull().default(0),
+    // Soft-delete tombstone: non-transactions discovered after insert (OTP
+    // rows, AutoPay ghosts). Kept so source_message_guid blocks re-ingestion.
+    deletedAt: text("deleted_at"),
     createdAt: text("created_at").default("(datetime('now'))"),
     updatedAt: text("updated_at").default("(datetime('now'))"),
   },

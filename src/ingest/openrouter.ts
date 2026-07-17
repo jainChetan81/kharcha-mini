@@ -48,7 +48,7 @@ const FALLBACK_FX_RATES: Record<string, number> = {
   GBP: 129,
 };
 
-function resolveInrAmount(
+export function resolveInrAmount(
   currency: string,
   originalAmount: number,
   amountInr: number | null,
@@ -219,9 +219,13 @@ STEP 2 — currency and amount. Bank SMS sometimes quote a FOREIGN currency (USD
 
 STEP 3 — type. "expense" for debited/spent/sent/paid/withdrawn. "income" for credited/received/refunded. "investment" for mutual fund/SIP/broker/NPS debits (NACH/ECS debits to clearing corporations, Zerodha, Groww, NPS, mutual fund SIP, stock broker, gold/digigold purchases).
 
-STEP 4 — merchant. Clean, human-readable counterparty name. Strip transaction/reference codes (P2M, P2A, CR, DR, numeric ids) and UPI handle suffixes (@okaxis, @paytm, @ybl). Title-case obvious all-caps merchant names but preserve real acronyms (HDFC, IRCTC, NPS). null only if truly no counterparty is identifiable.
+STEP 4 — merchant. Clean, human-readable counterparty name. Strip transaction/reference codes (P2M, P2A, CR, DR, numeric ids) and UPI handle suffixes (@okaxis, @paytm, @ybl). Also strip payment-gateway/aggregator prefixes: "PYU*", "RAZ*", "RSP*", "PTM*", "POS ", "WWW " (e.g. "PYU*Swiggy Food" -> "Swiggy", "RAZ*Swiggy" -> "Swiggy"). Map legal-entity names to their consumer brand when unambiguous: "BUNDL TECHNOLOGIES" -> "Swiggy", "Swiggy Instamart PR"/"RSP*INSTAMART" -> "Swiggy Instamart", "YOUTUBEGOOG" -> "YouTube". Title-case obvious all-caps merchant names but preserve real acronyms (HDFC, IRCTC, NPS). null only if truly no counterparty is identifiable.
 
-STEP 5 — category. Pick the single best match from the Categories list for the given type. Use "Other" only when nothing else plausibly fits.
+STEP 5 — category. Pick the single best match from the Categories list for the given type. Use "Other" only when nothing else plausibly fits. Specific rules learned from this user's history:
+- AI/developer subscriptions (OpenRouter, Anthropic/Claude, OpenAI/ChatGPT, T3 Chat, Cursor, GitHub) -> Work
+- Large recurring NEFT/RTGS credits with a corporate CMS remitter code (Info like "NEFT/CMS<digits>/<code>") -> income, category Salary
+- Cashback / "has been credited" small promotional credits -> income, category Refunds
+- Food delivery (Swiggy, Zomato) -> Food; quick-commerce groceries (Instamart, Blinkit, Zepto) -> Home; DAZN/Netflix/YouTube/PlayStation/Spotify -> Entertainment
 
 STEP 6 — date. Strict YYYY-MM-DD. Indian SMS commonly use DD-MM-YY, e.g. "07-04-26" -> "2026-04-07". Use the provided Today date only if the message truly has no date.
 

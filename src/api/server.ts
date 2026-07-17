@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { format, startOfDay } from "date-fns";
-import { and, count, eq, gt, gte, sql } from "drizzle-orm";
+import { and, count, eq, gt, gte, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/connection";
 import { ensureSchema } from "../db/bootstrap";
@@ -119,15 +119,18 @@ async function listTransactions(req: Request): Promise<Response> {
   const since = parseSince(url.searchParams.get("since"));
   const limit = parseLimit(url.searchParams.get("limit"));
 
+  // Tombstoned rows (OTP double-counts, AutoPay ghosts — see the 2026-07-17
+  // repair pass) must never sync to the app.
+  const conditions = [isNull(transactions.deletedAt)];
+  if (since !== null) {
+    conditions.push(gt(transactions.id, since));
+  }
   const query = db
     .select()
     .from(transactions)
+    .where(and(...conditions))
     .orderBy(transactions.id)
     .limit(limit);
-
-  if (since !== null) {
-    query.where(gt(transactions.id, since));
-  }
 
   const rows = await query.all();
   return json({ transactions: rows });
@@ -280,7 +283,12 @@ async function getSyncStatus(): Promise<Response> {
   const pendingRow = await db
     .select({ count: count() })
     .from(transactions)
-    .where(eq(transactions.syncStatus, "pending"))
+    .where(
+      and(
+        eq(transactions.syncStatus, "pending"),
+        isNull(transactions.deletedAt),
+      ),
+    )
     .get();
 
   return json({
@@ -296,7 +304,9 @@ async function getDigestToday(): Promise<Response> {
   const countRow = await db
     .select({ count: count() })
     .from(transactions)
-    .where(gte(transactions.date, todayStart))
+    .where(
+      and(gte(transactions.date, todayStart), isNull(transactions.deletedAt)),
+    )
     .get();
 
   const spendRow = await db
@@ -306,6 +316,7 @@ async function getDigestToday(): Promise<Response> {
       and(
         eq(transactions.type, "expense"),
         gte(transactions.date, todayStart),
+        isNull(transactions.deletedAt),
       ),
     )
     .get();
@@ -313,7 +324,12 @@ async function getDigestToday(): Promise<Response> {
   const reviewRow = await db
     .select({ count: count() })
     .from(transactions)
-    .where(eq(transactions.parsedBy, "failed"))
+    .where(
+      and(
+        eq(transactions.parsedBy, "failed"),
+        isNull(transactions.deletedAt),
+      ),
+    )
     .get();
 
   return json({

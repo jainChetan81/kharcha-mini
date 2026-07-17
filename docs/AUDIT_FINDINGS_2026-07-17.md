@@ -262,3 +262,34 @@ currency fixes, merchant/category updates, failed-row recovery) at **zero
 marginal LLM cost**, reserving paid calls for future live ingestion and an
 optional spot-check sample. This decouples the historical repair entirely from
 the model/cost decision and from the credits top-up.
+
+---
+
+# Repair pass — APPLIED to the live mini DB (same day, late evening)
+
+Executed via codex CLI on a scratch copy (kimi CLI was quota-blocked), verified
+independently, then swapped into `data/kharcha-mini.db` (pre-repair backup kept
+alongside as `kharcha-mini.db.pre-repair-<ts>`). Driven entirely by
+`data/audit-findings-full-2026-07-17.json` — zero LLM calls.
+
+Applied: **201 tombstones** (167+1 OTP double-counts, 7 cc-bill-payment fake
+income, 5 AutoPay ghosts, misc notices), **68 failed-row recoveries** (incl.
+10 salary NEFT credits, ₹28.06L, now income/Salary), **23 USD fixes**
+(currency + original_amount persisted, INR amount at flat 102.0, flagged
+needs_review), **~179 merchant + 272 category fixes**, **107 needs_review
+flags** (81 category conflicts deliberately not overwritten, FX conversions,
+3 unresolvable merchants: ids 259, 1175, 1178).
+
+Schema now carries `currency`, `original_amount`, `needs_review`, `deleted_at`.
+Post-swap verification: integrity ok, OTP live-sum ₹0, fake cc income 0,
+API serving with `deleted_at IS NULL` filter, ingest cycle clean.
+
+Pipeline hardening landed alongside (in `src/`): AI-first prompt learns the
+audit's classes (cc-bill-payments, NEFT/CMS salary, gateway prefixes, category
+rules); axis parser gained `axisNeftCredit` (salary format), a cc-bill-payment
+guard, and currency capture in `axisCardSpend`; foreign-currency parses always
+route to AI proofread and convert via fallback FX (USD 102) with
+`needs_review=1` if the AI is unavailable; `normalizeMerchant` strips gateway
+prefixes; 9 audit-derived aliases seeded (incl. `HACK` → Salary Credit).
+App-side healing: `scripts/build-restore-v3.ts` builds the phone-restore file
+from a fresh app backup.

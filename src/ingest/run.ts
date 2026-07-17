@@ -10,6 +10,7 @@ import { openChatDb, queryMessages, type ChatMessage } from "./chatdb-reader";
 import { parseMessage, type ParseOutcome } from "../parsers";
 import { DATE_TIME_FORMAT } from "../parsers/utils";
 import { ensureSchema } from "../db/bootstrap";
+import { resolveInrAmount } from "./openrouter";
 import { resolveWithProofread } from "./proofread";
 
 const BATCH_SIZE = 500;
@@ -71,7 +72,20 @@ async function upsertTransaction(
   const parserKey = outcome.parserKey ?? allowlistEntry?.parserKey ?? null;
 
   const parsed = outcome.parsed;
-  const amount = parsed?.amount ?? 0;
+  let amount = parsed?.amount ?? 0;
+  let needsReview = parsed?.needsReview ?? false;
+  const currency = parsed?.currency ?? null;
+  const originalAmount = parsed?.originalAmount ?? null;
+  // Foreign-currency spend that never got an AI-resolved INR amount (regex
+  // path, proofread unavailable/failed): convert via the fallback FX table so
+  // a $8 charge never persists as ₹8. Flag for review either way.
+  if (currency && currency !== "INR" && originalAmount !== null) {
+    if (amount === originalAmount) {
+      const resolved = resolveInrAmount(currency, originalAmount, null);
+      amount = Math.round(resolved.amount * 100) / 100;
+    }
+    needsReview = true;
+  }
   const merchant = parsed?.merchant ?? "Unknown";
   const type = parsed?.type ?? "expense";
   const dateText =
@@ -106,6 +120,9 @@ async function upsertTransaction(
       fingerprint,
       sourceMessageGuid: msg.guid,
       syncStatus: "pending",
+      currency: currency && currency !== "INR" ? currency : null,
+      originalAmount: currency && currency !== "INR" ? originalAmount : null,
+      needsReview: needsReview ? 1 : 0,
     })
     .onConflictDoNothing({ target: transactions.sourceMessageGuid });
 }

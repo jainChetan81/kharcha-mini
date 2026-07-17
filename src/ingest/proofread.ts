@@ -57,7 +57,12 @@ function shouldTriggerProofread(outcome: ParseOutcome, rawBody: string): boolean
 
   if (outcome.parsedBy === "failed") return true;
   if (!outcome.parsed) return false;
-  const { amount, merchant } = outcome.parsed;
+  const { amount, merchant, currency } = outcome.parsed;
+  // Foreign-currency spends always get an AI pass: the regex only sees the
+  // foreign number, and the AI layer knows how to separate currency /
+  // original_amount / any SMS-stated INR equivalent (2026-07-17 audit:
+  // 23 USD rows stored as bare INR numbers).
+  if (currency && currency !== "INR") return true;
   if (isGenericPlaceholder(merchant)) return true;
   if (amount !== undefined && amount > 0 && isEmptyMerchant(merchant)) {
     return true;
@@ -120,6 +125,12 @@ function applyOpenRouterResult(
       accountLast4: outcome.parsed?.accountLast4 ?? null,
       isSubscription: outcome.parsed?.isSubscription ?? false,
       billingDay: outcome.parsed?.billingDay ?? null,
+      currency: result.currency !== "INR" ? result.currency : undefined,
+      originalAmount:
+        result.currency !== "INR" ? result.originalAmount : undefined,
+      // Amount derived via the fallback FX table (not stated in the SMS) —
+      // surface for human review.
+      needsReview: result.fxRate !== null,
     },
   };
 }
