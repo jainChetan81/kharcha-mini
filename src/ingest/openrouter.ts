@@ -42,10 +42,15 @@ const DEFAULT_CATEGORIES = [
 // table from docs/V3_SPEC.md §4 once that schema migration lands — rates
 // below are approximate and NOT updated automatically.
 const FALLBACK_FX_RATES: Record<string, number> = {
-  // USD confirmed by owner 2026-07-17; EUR/GBP scaled approximately from it.
+  // USD confirmed by owner 2026-07-17; others scaled approximately from it so
+  // every currency the regex guards defer to this path has a usable rate.
   USD: 102,
   EUR: 110,
   GBP: 129,
+  AED: 28,
+  SGD: 76,
+  AUD: 66,
+  CAD: 73,
 };
 
 export function resolveInrAmount(

@@ -332,10 +332,19 @@ async function getDigestToday(): Promise<Response> {
     )
     .get();
 
+  const needsReviewRow = await db
+    .select({ count: count() })
+    .from(transactions)
+    .where(
+      and(eq(transactions.needsReview, 1), isNull(transactions.deletedAt)),
+    )
+    .get();
+
   return json({
     transactionCount: countRow?.count ?? 0,
     totalSpend: spendRow?.total ?? 0,
     reviewCount: reviewRow?.count ?? 0,
+    needsReviewCount: needsReviewRow?.count ?? 0,
     since: todayStart,
   });
 }

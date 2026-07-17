@@ -11,7 +11,16 @@ if ((mode !== "--dry-run" && mode !== "--apply") || !dir) {
 }
 const apply = mode === "--apply";
 const dbPath = `${process.env.HOME}/Desktop/code/kharcha-mini/data/kharcha-mini.db`;
-const USD_INR = 102.0;
+// Keep in sync with FALLBACK_FX_RATES in src/ingest/openrouter.ts.
+const FX_RATES: Record<string, number> = {
+  USD: 102,
+  EUR: 110,
+  GBP: 129,
+  AED: 28,
+  SGD: 76,
+  AUD: 66,
+  CAD: 73,
+};
 
 interface Finding {
   id: number;
@@ -84,7 +93,13 @@ for (const [id, f] of merged) {
     bump("date");
   }
   if (f.issues.includes("WRONG_CURRENCY") && s.currency && s.amount != null && !row.currency) {
-    const inr = Math.round(s.amount * USD_INR * 100) / 100;
+    const rate = FX_RATES[s.currency];
+    if (!rate) {
+      bump("currency_unknown_rate");
+      changes.push(`${id}\tcurrency-skip\tno FX rate for ${s.currency}`);
+      continue;
+    }
+    const inr = Math.round(s.amount * rate * 100) / 100;
     set(id, "currency", s.currency);
     set(id, "original_amount", s.amount);
     set(id, "amount", inr);

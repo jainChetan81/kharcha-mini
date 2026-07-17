@@ -89,11 +89,13 @@ for (const row of appRows) {
     removed++;
     continue;
   }
+  const miniCatId = m.category
+    ? (catId.get(`${m.category}|${m.type}`) ?? null)
+    : null;
   const keepCat =
     row.category_id !== null && !otherIds.has(row.category_id)
       ? row.category_id
-      : (m.category && catId.get(`${m.category}|${m.type}`)) ??
-        row.category_id;
+      : (miniCatId ?? row.category_id);
   // Heal the date when the mini has a real time-of-day and the app copy lost
   // it (old sync builds truncated to date-only, which the app then renders as
   // 05:30 IST — UTC-midnight artifact).
