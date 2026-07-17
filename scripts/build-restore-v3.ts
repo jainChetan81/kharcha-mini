@@ -69,7 +69,16 @@ app.exec("BEGIN");
 
 const del = app.prepare("DELETE FROM transactions WHERE id = ?");
 const upd = app.prepare(
-  "UPDATE transactions SET merchant = ?, category_id = ?, amount = ?, type = ? WHERE id = ?",
+  "UPDATE transactions SET merchant = ?, category_id = ?, amount = ?, type = ?, date = ? WHERE id = ?",
+);
+
+const appDates = new Map(
+  (
+    app.query("SELECT id, date FROM transactions WHERE mini_transaction_id IS NOT NULL").all() as {
+      id: number;
+      date: string;
+    }[]
+  ).map((r) => [r.id, r.date]),
 );
 
 for (const row of appRows) {
@@ -85,13 +94,20 @@ for (const row of appRows) {
       ? row.category_id
       : (m.category && catId.get(`${m.category}|${m.type}`)) ??
         row.category_id;
+  // Heal the date when the mini has a real time-of-day and the app copy lost
+  // it (old sync builds truncated to date-only, which the app then renders as
+  // 05:30 IST — UTC-midnight artifact).
+  const appDate = appDates.get(row.id) ?? "";
+  const miniHasTime = m.date.length > 10 && !m.date.endsWith(" 00:00");
+  const keepDate = miniHasTime && appDate !== m.date ? m.date : appDate;
   const changed =
     m.merchant !== row.merchant ||
     keepCat !== row.category_id ||
     Math.abs(m.amount - row.amount) > 0.005 ||
-    m.type !== row.type;
+    m.type !== row.type ||
+    keepDate !== appDate;
   if (changed) {
-    upd.run(m.merchant, keepCat, m.amount, m.type, row.id);
+    upd.run(m.merchant, keepCat, m.amount, m.type, keepDate, row.id);
     healed++;
   }
 }
