@@ -1,0 +1,22 @@
+--- a/net-watchdog.sh
++++ b/net-watchdog.sh
+@@ -67,5 +67,18 @@ if ! curl -fsS -m 10 "http://${TAILNET_IP}:${JELLYFIN_PORT}/health" >/dev/null
+   log "net-watchdog: WARNING jellyfin ok on loopback but NOT on ${TAILNET_IP}:${JELLYFIN_PORT} — run: sudo lsof -nP -i :${JELLYFIN_PORT} ; $TS serve status"
+ fi
+ 
++# --- 5. kharcha-mini API: forbid public funnel --------------------------------
++# The API is intentionally tailnet-only via `tailscale serve`. A funnel rule
++# on :8300 would expose it to the public internet and must be cleared.
++KHARCHA_PORT=8300
++FUNNEL_STATUS=$("$TS" funnel status 2>/dev/null || true)
++if printf '%s' "$FUNNEL_STATUS" | grep -qE "https?://[^ ]*:${KHARCHA_PORT}\b"; then
++  log "net-watchdog: FORBIDDEN funnel rule on :${KHARCHA_PORT} found — removing"
++  "$TS" funnel --https="${KHARCHA_PORT}" off >/dev/null 2>&1 \
++    || sudo -n "$TS" funnel --https="${KHARCHA_PORT}" off >/dev/null 2>&1 \
++    || log "net-watchdog: FAILED to remove funnel rule on :${KHARCHA_PORT} (needs manual: sudo tailscale funnel --https=${KHARCHA_PORT} off)"
++  ACTED=1
++fi
++
+ # --- 4. heartbeat ---------------------------------------------------------------
+ [ "$ACTED" = "1" ] && log "net-watchdog: run complete (took action)"
+ bash "$DIR/kuma_push.sh" net-watchdog >/dev/null 2>&1 || true

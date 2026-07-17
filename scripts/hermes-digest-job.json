@@ -1,0 +1,47 @@
+{
+  "_note": "PROPOSED Hermes cron job entry. Do NOT copy directly into ~/.hermes/cron/jobs.json without review. The script path is absolute and assumes the API is running on 127.0.0.1:8300 with the bearer token in Keychain.",
+  "id": "04500f9569c9",
+  "name": "kharcha_mini_digest",
+  "prompt": null,
+  "skills": [],
+  "skill": null,
+  "model": null,
+  "provider": null,
+  "provider_snapshot": null,
+  "model_snapshot": null,
+  "base_url": null,
+  "script": "/Users/chetanjain/Desktop/code/kharcha-mini/scripts/digest-telegram.sh",
+  "no_agent": true,
+  "context_from": null,
+  "schedule": {
+    "kind": "cron",
+    "expr": "0 21 * * *",
+    "display": "0 21 * * *"
+  },
+  "schedule_display": "0 21 * * *",
+  "repeat": {
+    "times": null,
+    "completed": 0
+  },
+  "enabled": true,
+  "state": "scheduled",
+  "paused_at": null,
+  "paused_reason": null,
+  "created_at": "2026-07-14T17:04:43.531000+05:30",
+  "next_run_at": null,
+  "last_run_at": null,
+  "last_status": null,
+  "last_error": null,
+  "last_delivery_error": null,
+  "deliver": "telegram:8504047969",
+  "origin": {
+    "platform": "telegram",
+    "chat_id": "8504047969",
+    "chat_name": "chetan Jain",
+    "thread_id": null,
+    "user_id": "8504047969"
+  },
+  "enabled_toolsets": [],
+  "workdir": null,
+  "fire_claim": null
+}
