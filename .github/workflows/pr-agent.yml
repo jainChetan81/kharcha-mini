@@ -3,18 +3,40 @@ on:
     types: [opened, reopened, ready_for_review, synchronize]
   issue_comment:
 
+# Actions are pinned to immutable commit SHAs rather than mutable tags. Every
+# job below hands this action both OPENROUTER_KEY and a GITHUB_TOKEN, so a
+# force-pushed tag or a compromised `main` would hand over live credentials.
+# Bump these deliberately; the trailing comment records what each SHA was.
+#
+# Permissions are `contents: read` throughout: PR-Agent only needs to read the
+# diff and write comments. Write access would let a prompt-injected review body
+# reach file-writing commands like /update_changelog.
+#
+# `issue_comment` fires on plain issues too, and this is a public repo, so
+# every comment-triggered job additionally requires the commenter to be an
+# OWNER, MEMBER or COLLABORATOR. Without that gate any stranger could burn
+# paid model credit by commenting `/review` in a loop.
 jobs:
-  # Automatic on PR open/push, or manual any time by commenting /review.
+  # Automatic on PR open/push, or manual by commenting /review on a PR.
   review_standard:
-    if: github.event.sender.type != 'Bot'
+    if: >
+      github.event.sender.type != 'Bot' &&
+      (
+        github.event_name == 'pull_request' ||
+        (
+          github.event.issue.pull_request != null &&
+          startsWith(github.event.comment.body, '/review') &&
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+        )
+      )
     runs-on: ubuntu-latest
     name: "PR Review — standard (gpt-5.6-luna)"
     permissions:
       issues: write
       pull-requests: write
-      contents: write
+      contents: read
     steps:
-      - uses: the-pr-agent/pr-agent@main
+      - uses: the-pr-agent/pr-agent@4a26c38d33d16ea490d6f0dd5c11b06e6c2f2cac # main @ 2026-08-03
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENROUTER__KEY: ${{ secrets.OPENROUTER_KEY }}
@@ -39,15 +61,16 @@ jobs:
       github.event_name == 'issue_comment' &&
       github.event.issue.pull_request != null &&
       startsWith(github.event.comment.body, '/review') &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
       contains(github.event.issue.labels.*.name, 'review:feature')
     runs-on: ubuntu-latest
     name: "PR Review — feature depth (gpt-5.6-terra)"
     permissions:
       issues: write
       pull-requests: write
-      contents: write
+      contents: read
     steps:
-      - uses: the-pr-agent/pr-agent@main
+      - uses: the-pr-agent/pr-agent@4a26c38d33d16ea490d6f0dd5c11b06e6c2f2cac # main @ 2026-08-03
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENROUTER__KEY: ${{ secrets.OPENROUTER_KEY }}
@@ -67,15 +90,16 @@ jobs:
       github.event_name == 'issue_comment' &&
       github.event.issue.pull_request != null &&
       startsWith(github.event.comment.body, '/review') &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
       contains(github.event.issue.labels.*.name, 'review:arch')
     runs-on: ubuntu-latest
     name: "PR Review — architecture (gemini-2.5-pro)"
     permissions:
       issues: write
       pull-requests: write
-      contents: write
+      contents: read
     steps:
-      - uses: the-pr-agent/pr-agent@main
+      - uses: the-pr-agent/pr-agent@4a26c38d33d16ea490d6f0dd5c11b06e6c2f2cac # main @ 2026-08-03
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENROUTER__KEY: ${{ secrets.OPENROUTER_KEY }}
@@ -95,15 +119,16 @@ jobs:
       github.event_name == 'issue_comment' &&
       github.event.issue.pull_request != null &&
       startsWith(github.event.comment.body, '/ask') &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
       contains(github.event.issue.labels.*.name, 'review:plan')
     runs-on: ubuntu-latest
     name: "PR Review — plan compliance (gpt-5.6-terra)"
     permissions:
       issues: write
       pull-requests: write
-      contents: write
+      contents: read
     steps:
-      - uses: the-pr-agent/pr-agent@main
+      - uses: the-pr-agent/pr-agent@4a26c38d33d16ea490d6f0dd5c11b06e6c2f2cac # main @ 2026-08-03
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENROUTER__KEY: ${{ secrets.OPENROUTER_KEY }}

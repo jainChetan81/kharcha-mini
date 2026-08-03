@@ -9,10 +9,18 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    # Read-only: this job never pushes, comments, or creates anything.
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      # Pinned to commit SHAs, not tags — a tag can be repointed at new code.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # Nothing here runs git against the remote, so don't leave a usable
+          # token in .git/config for later steps to pick up.
+          persist-credentials: false
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: latest
 
