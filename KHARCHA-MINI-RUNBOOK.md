@@ -272,8 +272,8 @@ formatted message. It is **not** installed automatically.
 
 Files to review:
 
-- `scripts/digest-telegram.sh` — reads the API token from Keychain, curls the
-  endpoint, prints a Telegram-ready message to stdout.
+- `scripts/digest-telegram.sh` — curls the endpoint on loopback, prints a
+  Telegram-ready message to stdout.
 - `scripts/hermes-digest-job.json` — proposed `no_agent: true` Hermes job entry
   that runs the script at `0 21 * * *` and delivers to Telegram.
 
