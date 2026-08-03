@@ -2,3 +2,9 @@ node_modules/
 data/
 *.log
 .DS_Store
+
+# Local agent tooling. Vendored skills and their lockfile live on disk but are
+# deliberately not tracked — they are editor tooling, not part of this project.
+.agents/
+.claude/
+skills-lock.json
