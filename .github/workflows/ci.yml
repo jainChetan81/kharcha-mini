@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    # Read-only: this job never pushes, comments, or creates anything.
+    permissions:
+      contents: read
+    steps:
+      # Pinned to commit SHAs, not tags — a tag can be repointed at new code.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # Nothing here runs git against the remote, so don't leave a usable
+          # token in .git/config for later steps to pick up.
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: latest
+
+      - name: install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: typecheck
+        run: bun run typecheck
+
+      # verify:api boots the real server against a throwaway SQLite file in
+      # $TMPDIR and exercises every route, so it runs anywhere bun does. The
+      # other verify:* scripts read the live transaction DB on the mini and
+      # are deliberately not run here.
+      - name: verify API
+        run: bun run verify:api
