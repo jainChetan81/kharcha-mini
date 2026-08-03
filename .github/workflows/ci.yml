@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: typecheck
+        run: bun run typecheck
+
+      # verify:api boots the real server against a throwaway SQLite file in
+      # $TMPDIR and exercises every route, so it runs anywhere bun does. The
+      # other verify:* scripts read the live transaction DB on the mini and
+      # are deliberately not run here.
+      - name: verify API
+        run: bun run verify:api
