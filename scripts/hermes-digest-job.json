@@ -1,5 +1,5 @@
 {
-  "_note": "PROPOSED Hermes cron job entry. Do NOT copy directly into ~/.hermes/cron/jobs.json without review. The script path is absolute and assumes the API is running on 127.0.0.1:8300 with the bearer token in Keychain.",
+  "_note": "PROPOSED Hermes cron job entry. Do NOT copy directly into ~/.hermes/cron/jobs.json without review. The script path is absolute and assumes the API is running on 127.0.0.1:8300. The API has no auth; it is reachable on loopback and the tailnet only.",
   "id": "04500f9569c9",
   "name": "kharcha_mini_digest",
   "prompt": null,

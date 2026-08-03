@@ -10,7 +10,6 @@
     "drizzle:studio": "drizzle-kit studio",
     "ingest": "bun run src/ingest/run.ts",
     "api": "bun run src/api/server.ts",
-    "generate-api-token": "bun run src/scripts/generate-api-token.ts",
     "seed:allowlist": "bun run src/scripts/seed-allowlist.ts",
     "toggle-proofread": "bun run src/scripts/toggle-proofread.ts",
     "verify:proofread": "bun run src/scripts/verify-proofread.ts",

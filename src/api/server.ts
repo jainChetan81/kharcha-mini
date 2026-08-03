@@ -7,7 +7,6 @@ import { ensureSchema } from "../db/bootstrap";
 import { transactions, merchantAliases } from "../db/schema";
 import { getConfig } from "../db/config";
 import { normalizeMerchant, upsertAlias } from "../db/merchant-aliases";
-import { readToken } from "./token";
 import { DATE_TIME_FORMAT } from "../parsers/utils";
 
 const DEFAULT_PORT = 8300;
@@ -28,10 +27,6 @@ function json(body: unknown, status = 200): Response {
   return Response.json(body, { status });
 }
 
-function unauthorized(): Response {
-  return json({ error: "Unauthorized" }, 401);
-}
-
 function badRequest(message: string): Response {
   return json({ error: message }, 400);
 }
@@ -42,20 +37,6 @@ function notFound(message: string): Response {
 
 function serverError(message: string): Response {
   return json({ error: message }, 500);
-}
-
-function isAuthenticated(req: Request): boolean {
-  const header = req.headers.get("Authorization") ?? "";
-  const match = header.match(/^Bearer\s+(.+)$/i);
-  if (!match) return false;
-  const token = readToken();
-  if (!token) return false;
-  return match[1] === token;
-}
-
-function requireAuth(req: Request): Response | null {
-  if (!isAuthenticated(req)) return unauthorized();
-  return null;
 }
 
 function parseSince(raw: string | null): number | null {
@@ -354,12 +335,11 @@ async function route(req: Request): Promise<Response> {
   const method = req.method;
   const path = url.pathname;
 
+  // Single-user, tailnet-only deployment: no auth on any route. Access control
+  // is the tailnet boundary (see runbook 11.5 — never funnel this port).
   if (method === "GET" && path === "/health") {
     return getHealth();
   }
-
-  const authError = requireAuth(req);
-  if (authError) return authError;
 
   if (method === "GET" && path === "/transactions") {
     return listTransactions(req);
@@ -425,12 +405,5 @@ function logError(...parts: unknown[]): void {
 }
 
 if (import.meta.main) {
-  const token = readToken();
-  if (!token) {
-    logError(
-      "bearer token not found in Keychain; generate it first (see runbook)",
-    );
-    process.exit(1);
-  }
   startServer();
 }

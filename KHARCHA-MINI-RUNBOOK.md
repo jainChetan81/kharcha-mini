@@ -195,33 +195,33 @@ are ready.
 | method | path | auth | description |
 |---|---|---|---|
 | GET | `/health` | none | `{ok: true, lastPollAt}` for Uptime Kuma |
-| GET | `/transactions?since=<id>&limit=<n>` | Bearer | transactions with `id > since`, ordered by id, default limit 200, max 1000 |
-| POST | `/transactions` | Bearer | insert a manual transaction |
-| PATCH | `/transactions/:id` | Bearer | update merchant/category/amount/etc.; merchant changes write a `manual` alias |
-| GET | `/sync/status` | Bearer | `{cursor, lastPollAt, addedSinceLastCheck}` |
-| GET | `/digest/today` | Bearer | `{transactionCount, totalSpend, reviewCount, since}` |
+| GET | `/transactions?since=<id>&limit=<n>` | none | transactions with `id > since`, ordered by id, default limit 200, max 1000 |
+| POST | `/transactions` | none | insert a manual transaction |
+| PATCH | `/transactions/:id` | none | update merchant/category/amount/etc.; merchant changes write a `manual` alias |
+| GET | `/sync/status` | none | `{cursor, lastPollAt, addedSinceLastCheck}` |
+| GET | `/digest/today` | none | `{transactionCount, totalSpend, reviewCount, since}` |
 
-### 11.2 bearer token
+### 11.2 no auth
 
-The token lives in the macOS Keychain:
-
-- service: `kharcha-mini-api-token`
-- account: `mini`
-
-Generate/rotate it with:
+There is no bearer token. This is a single-user setup, so every route is open
+and the app just calls the URL directly:
 
 ```bash
-cd ~/Desktop/code/kharcha-mini
-bun run generate-api-token
+curl http://127.0.0.1:8300/transactions?since=0
 ```
 
-Verify it exists (value not shown):
+The only thing standing between this data and the internet is the network
+boundary: the server binds to `127.0.0.1` and is reached from the phone over
+Tailscale (section 11.5). **Never** funnel port 8300 — with auth removed, a
+funnel rule puts read *and write* access to the whole transaction table on the
+public internet.
+
+The old Keychain entry (`kharcha-mini-api-token` / `mini`) is now unused. Delete
+it if you want:
 
 ```bash
-security find-generic-password -s kharcha-mini-api-token -a mini
+security delete-generic-password -s kharcha-mini-api-token -a mini
 ```
-
-Use it as `Authorization: Bearer <token>` in every request except `/health`.
 
 ### 11.3 run the API manually
 

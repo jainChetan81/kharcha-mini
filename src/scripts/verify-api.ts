@@ -7,7 +7,6 @@ import { ensureSchema } from "../db/bootstrap";
 import { db } from "../db/connection";
 import { transactions, merchantAliases } from "../db/schema";
 import { startServer } from "../api/server";
-import { clearCachedToken, readToken } from "../api/token";
 import { DATE_TIME_FORMAT } from "../parsers/utils";
 
 function fail(message: string): never {
@@ -26,13 +25,12 @@ async function main(): Promise<void> {
   const dbPath = join(tmpDir, "test.db");
   process.env.KHARCHA_MINI_DB = dbPath;
 
+  // The /digest/today assertions below only hold if the seeded transactions
+  // land on the current date, so derive it instead of hardcoding one.
+  const todayDate = format(new Date(), "yyyy-MM-dd");
+
   try {
     ensureSchema();
-
-    // Use the real bearer token from Keychain for auth tests.
-    clearCachedToken();
-    const token = readToken();
-    assert(token !== null, "bearer token not found in Keychain");
 
     // Start the API on an ephemeral port.
     const server = startServer({ port: 0, hostname: "127.0.0.1" });
@@ -47,39 +45,36 @@ async function main(): Promise<void> {
       // eslint-disable-next-line no-console
       console.log("OK: /health without auth succeeds");
 
-      // 2. Unauthenticated /transactions returns 401.
-      const noAuth = await fetch(`${url}/transactions`);
-      assert(noAuth.status === 401, `expected 401 without auth, got ${noAuth.status}`);
-
-      // 3. Wrong token returns 401.
-      const wrongAuth = await fetch(`${url}/transactions`, {
-        headers: { Authorization: "Bearer wrong-token" },
+      // 2. No auth anywhere: a stray Authorization header is ignored, not rejected.
+      const strayAuth = await fetch(`${url}/transactions`, {
+        headers: { Authorization: "Bearer whatever" },
       });
-      assert(wrongAuth.status === 401, `expected 401 with wrong token, got ${wrongAuth.status}`);
+      assert(
+        strayAuth.status === 200,
+        `expected 200 with stray auth header, got ${strayAuth.status}`,
+      );
       // eslint-disable-next-line no-console
-      console.log("OK: missing/wrong token returns 401");
+      console.log("OK: Authorization header is ignored, never 401");
 
-      const authHeaders = { Authorization: `Bearer ${token}` };
-
-      // 4. Authenticated /transactions succeeds and is empty initially.
-      const emptyList = await fetch(`${url}/transactions`, { headers: authHeaders });
+      // 3. /transactions succeeds without any headers and is empty initially.
+      const emptyList = await fetch(`${url}/transactions`);
       assert(emptyList.status === 200, `expected 200, got ${emptyList.status}`);
       const emptyBody = (await emptyList.json()) as { transactions: unknown[] };
       assert(Array.isArray(emptyBody.transactions), "expected transactions array");
       assert(emptyBody.transactions.length === 0, "expected empty transactions list");
       // eslint-disable-next-line no-console
-      console.log("OK: authenticated /transactions succeeds");
+      console.log("OK: GET /transactions succeeds with no headers");
 
-      // 5. POST /transactions round-trips.
+      // 4. POST /transactions round-trips.
       const createRes = await fetch(`${url}/transactions`, {
         method: "POST",
-        headers: { ...authHeaders, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: "expense",
           amount: 250.5,
           merchant: "Coffee Shop",
           category: "Food",
-          date: "2026-07-14 09:30",
+          date: `${todayDate} 09:30`,
         }),
       });
       assert(createRes.status === 201, `expected 201, got ${createRes.status}`);
@@ -90,7 +85,6 @@ async function main(): Promise<void> {
 
       const listRes = await fetch(
         `${url}/transactions?since=${createBody.transaction.id - 1}`,
-        { headers: authHeaders },
       );
       assert(listRes.status === 200, `expected 200, got ${listRes.status}`);
       const listBody = (await listRes.json()) as { transactions: Array<{ id: number; merchant: string; amount: number }> };
@@ -102,10 +96,10 @@ async function main(): Promise<void> {
       // eslint-disable-next-line no-console
       console.log("OK: GET /transactions?since= round-trips created transaction");
 
-      // 6. PATCH /transactions/:id updates and writes a manual alias.
+      // 5. PATCH /transactions/:id updates and writes a manual alias.
       const patchRes = await fetch(`${url}/transactions/${createBody.transaction.id}`, {
         method: "PATCH",
-        headers: { ...authHeaders, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           merchant: "Blue Tokai",
           category: "Beverages",
@@ -127,7 +121,7 @@ async function main(): Promise<void> {
       // eslint-disable-next-line no-console
       console.log("OK: PATCH /transactions/:id updates and writes manual alias");
 
-      // 7. /digest/today returns sane shape against seeded data.
+      // 6. /digest/today returns sane shape against seeded data.
       const todayStart = format(startOfDay(new Date()), DATE_TIME_FORMAT);
       await db.insert(transactions).values({
         type: "expense",
@@ -144,7 +138,7 @@ async function main(): Promise<void> {
         syncStatus: "pending",
       });
 
-      const digestRes = await fetch(`${url}/digest/today`, { headers: authHeaders });
+      const digestRes = await fetch(`${url}/digest/today`);
       assert(digestRes.status === 200, `expected 200, got ${digestRes.status}`);
       const digestBody = (await digestRes.json()) as {
         transactionCount: number;
@@ -162,8 +156,8 @@ async function main(): Promise<void> {
       // eslint-disable-next-line no-console
       console.log("OK: /digest/today returns sane shape");
 
-      // 8. Sync status shape.
-      const syncRes = await fetch(`${url}/sync/status`, { headers: authHeaders });
+      // 7. Sync status shape.
+      const syncRes = await fetch(`${url}/sync/status`);
       assert(syncRes.status === 200, `expected 200, got ${syncRes.status}`);
       const syncBody = (await syncRes.json()) as {
         cursor: string;

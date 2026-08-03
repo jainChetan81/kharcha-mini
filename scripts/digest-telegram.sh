@@ -5,12 +5,8 @@
 set -euo pipefail
 
 API_URL="http://127.0.0.1:8300/digest/today"
-TOKEN=$(security find-generic-password -s kharcha-mini-api-token -a mini -w 2>/dev/null) || {
-  echo "kharcha digest: missing bearer token in Keychain" >&2
-  exit 1
-}
 
-PAYLOAD=$(curl -fsS -m 10 -H "Authorization: Bearer ${TOKEN}" "${API_URL}" 2>/dev/null) || {
+PAYLOAD=$(curl -fsS -m 10 "${API_URL}" 2>/dev/null) || {
   echo "kharcha digest: API call failed" >&2
   exit 1
 }
