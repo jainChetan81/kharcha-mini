@@ -5,8 +5,11 @@ Native macOS ingestion step for Kharcha. Reads the owner's iPhone SMS from
 bank transaction alerts with regex, and stores canonical transactions in a local
 sqlite db at `~/Desktop/code/kharcha-mini/data/kharcha-mini.db`.
 
-This is step 2 of 4: ingestion + AI proofread (gated OFF by default) +
-merchant aliases. No API, no app sync.
+The service provides ingestion, optional AI proofreading, merchant aliases,
+and a tailnet-only API for the Kharcha app.
+
+Verified on 4 September 2026: the API, scheduled ingest, tailnet route,
+type-check, and isolated API checks passed.
 
 ## 1. prerequisites
 
@@ -94,7 +97,7 @@ lands.
 | IndusInd Bank | `indusind` | ported from Gmail parser + ref no |
 | all others | — | regex fails; an OpenRouter proofread pass can fill the gap when enabled |
 
-The OpenRouter proofread step is implemented but **disabled by default**. It is
+The OpenRouter proofread step is implemented but **disabled**. It is
 triggered for allowlisted senders when:
 
 - regex parsing failed entirely (`parsed_by: failed`), or
@@ -119,9 +122,11 @@ The gate is controlled by the `openrouter_proofread_enabled` config key.
 actual bank SMS. Once enabled, the next poll cycle may issue live OpenRouter
 calls.
 
-Model is hardcoded to `google/gemini-3.5-flash` via OpenRouter. The API key is
-read at runtime from `~/.hermes/.env` (`OPENROUTER_API_KEY`); it is never
-written into this repo or logged.
+Model is hardcoded to `google/gemini-3.5-flash` via OpenRouter.
+
+No approved OpenRouter key exists on the Mini as of 4 September 2026.
+
+Keep proofreading disabled until its secret storage is redesigned without Hermes.
 
 ## 7. merchant aliases
 
@@ -195,7 +200,7 @@ are ready.
 | method | path | auth | description |
 |---|---|---|---|
 | GET | `/health` | none | `{ok: true, lastPollAt}` for Uptime Kuma |
-| GET | `/transactions?since=<id>&limit=<n>` | none | transactions with `id > since`, ordered by id, default limit 200, max 1000 |
+| GET | `/transactions?since=<id>&limit=<n>` | none | income and expense rows with `id > since`, ordered by id, default limit 200, max 1000 |
 | POST | `/transactions` | none | insert a manual transaction |
 | PATCH | `/transactions/:id` | none | update merchant/category/amount/etc.; merchant changes write a `manual` alias |
 | GET | `/sync/status` | none | `{cursor, lastPollAt, addedSinceLastCheck}` |
@@ -263,24 +268,9 @@ tailscale serve --bg --https=8300 http://127.0.0.1:8300
 
 **Never** use `tailscale funnel` for port 8300. The API is intentionally
 tailnet-only. A draft net-watchdog addition to clear a forbidden funnel rule is
-provided for review (see section 11.7).
+provided for review (see section 11.6).
 
-### 11.6 Telegram daily digest (Hermes cron — draft for review)
-
-A script-based Hermes cron job is drafted to call `/digest/today` and deliver a
-formatted message. It is **not** installed automatically.
-
-Files to review:
-
-- `scripts/digest-telegram.sh` — curls the endpoint on loopback, prints a
-  Telegram-ready message to stdout.
-- `scripts/hermes-digest-job.json` — proposed `no_agent: true` Hermes job entry
-  that runs the script at `0 21 * * *` and delivers to Telegram.
-
-Apply only after reviewing: copy the JSON object into `~/.hermes/cron/jobs.json`
-under the `jobs` array and reload Hermes cron. Do not edit Hermes files blindly.
-
-### 11.7 net-watchdog rule (draft for review)
+### 11.6 net-watchdog rule (draft for review)
 
 `scripts/net-watchdog-kharcha-mini.diff` proposes adding a check to
 `~/scripts/net-watchdog.sh` that clears any `tailscale funnel` rule on port 8300,

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { format, startOfDay } from "date-fns";
-import { and, count, eq, gt, gte, isNull, sql } from "drizzle-orm";
+import { and, count, eq, gt, gte, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/connection";
 import { ensureSchema } from "../db/bootstrap";
@@ -102,7 +102,10 @@ async function listTransactions(req: Request): Promise<Response> {
 
   // Tombstoned rows (OTP double-counts, AutoPay ghosts — see the 2026-07-17
   // repair pass) must never sync to the app.
-  const conditions = [isNull(transactions.deletedAt)];
+  const conditions = [
+    isNull(transactions.deletedAt),
+    inArray(transactions.type, ["income", "expense"]),
+  ];
   if (since !== null) {
     conditions.push(gt(transactions.id, since));
   }

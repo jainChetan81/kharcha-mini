@@ -96,7 +96,32 @@ async function main(): Promise<void> {
       // eslint-disable-next-line no-console
       console.log("OK: GET /transactions?since= round-trips created transaction");
 
-      // 5. PATCH /transactions/:id updates and writes a manual alias.
+      // 5. The app sync contract accepts income and expense rows only.
+      const investmentRes = await fetch(`${url}/transactions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "investment",
+          amount: 5000,
+          merchant: "Index Fund SIP",
+          category: "Investment",
+          date: `${todayDate} 10:00`,
+        }),
+      });
+      assert(investmentRes.status === 201, `expected 201, got ${investmentRes.status}`);
+
+      const appSyncRes = await fetch(`${url}/transactions`);
+      const appSyncBody = (await appSyncRes.json()) as {
+        transactions: Array<{ type: string }>;
+      };
+      assert(
+        appSyncBody.transactions.every((transaction) => transaction.type !== "investment"),
+        "expected app sync endpoint to exclude investment rows",
+      );
+      // eslint-disable-next-line no-console
+      console.log("OK: GET /transactions excludes unsupported investment rows");
+
+      // 6. PATCH /transactions/:id updates and writes a manual alias.
       const patchRes = await fetch(`${url}/transactions/${createBody.transaction.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -121,7 +146,7 @@ async function main(): Promise<void> {
       // eslint-disable-next-line no-console
       console.log("OK: PATCH /transactions/:id updates and writes manual alias");
 
-      // 6. /digest/today returns sane shape against seeded data.
+      // 7. /digest/today returns sane shape against seeded data.
       const todayStart = format(startOfDay(new Date()), DATE_TIME_FORMAT);
       await db.insert(transactions).values({
         type: "expense",
@@ -156,7 +181,7 @@ async function main(): Promise<void> {
       // eslint-disable-next-line no-console
       console.log("OK: /digest/today returns sane shape");
 
-      // 7. Sync status shape.
+      // 8. Sync status shape.
       const syncRes = await fetch(`${url}/sync/status`);
       assert(syncRes.status === 200, `expected 200, got ${syncRes.status}`);
       const syncBody = (await syncRes.json()) as {
