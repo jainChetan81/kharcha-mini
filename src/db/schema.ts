@@ -48,6 +48,8 @@ export const transactions = sqliteTable(
     // Soft-delete tombstone: non-transactions discovered after insert (OTP
     // rows, AutoPay ghosts). Kept so source_message_guid blocks re-ingestion.
     deletedAt: text("deleted_at"),
+    // Monotonic change counter, bumped by triggers on every insert/update.
+    changeSeq: integer("change_seq"),
     createdAt: text("created_at").default("(datetime('now'))"),
     updatedAt: text("updated_at").default("(datetime('now'))"),
   },

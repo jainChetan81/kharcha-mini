@@ -5,7 +5,7 @@ import { getConfig, setConfig } from "../db/config";
 
 const URL_KEY = "vps_push_url";
 const TOKEN_KEY = "vps_push_token";
-const CURSOR_KEY = "vps_push_last_id";
+const CURSOR_KEY = "vps_push_change_seq";
 const BATCH_SIZE = 500;
 const TIMEOUT_MS = 20_000;
 
@@ -38,12 +38,14 @@ export async function pushToVps(): Promise<void> {
 
     for (;;) {
       // ponytail: no other filter on purpose — tombstones and every
-      // transaction type must reach the VPS unchanged.
+      // transaction type must reach the VPS unchanged. Ordering by change_seq
+      // (not id) is what makes edits and tombstones of already-pushed rows
+      // resend.
       const rows = await db
         .select()
         .from(transactions)
-        .where(gt(transactions.id, cursor))
-        .orderBy(asc(transactions.id))
+        .where(gt(transactions.changeSeq, cursor))
+        .orderBy(asc(transactions.changeSeq))
         .limit(BATCH_SIZE);
 
       if (rows.length === 0) return;
@@ -66,7 +68,7 @@ export async function pushToVps(): Promise<void> {
         return;
       }
 
-      cursor = rows[rows.length - 1].id;
+      cursor = rows[rows.length - 1].changeSeq ?? cursor;
       await setConfig(CURSOR_KEY, String(cursor));
       log(`vps push: sent ${rows.length} row(s), cursor=${cursor}`);
     }

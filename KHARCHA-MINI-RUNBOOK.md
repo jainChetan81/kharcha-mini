@@ -279,10 +279,11 @@ after review.
 
 ## 12. push to kharcha-web
 
-After each ingest run, `src/sync/push-vps.ts` POSTs new `transactions` rows
-(id > cursor, batches of 500, all types, tombstones included) to the VPS app at
-`${vps_push_url}/api/ingest` with `Authorization: Bearer <vps_push_token>`. The
-cursor lives in `config.vps_push_last_id`. Manual run: `bun run push:vps`.
+After each ingest run, `src/sync/push-vps.ts` POSTs changed `transactions` rows
+(change_seq > cursor, batches of 500, all types, tombstones included) to the VPS
+app at `${vps_push_url}/api/ingest` with `Authorization: Bearer
+<vps_push_token>`. The cursor lives in `config.vps_push_change_seq`. Manual run:
+`bun run push:vps`. To force a full resend, set `vps_push_change_seq` to `0`.
 
 Config keys (`config` table):
 
@@ -290,7 +291,7 @@ Config keys (`config` table):
 |---|---|
 | `vps_push_url` | base URL, e.g. `https://<host>:8790` |
 | `vps_push_token` | bearer token |
-| `vps_push_last_id` | cursor, managed by the push; default `0` |
+| `vps_push_change_seq` | cursor, managed by the push; default `0` |
 
 If `vps_push_url` or `vps_push_token` is missing the push logs
 `vps push skipped: not configured` and does nothing. Set them with:
