@@ -12,6 +12,7 @@ import { DATE_TIME_FORMAT } from "../parsers/utils";
 import { ensureSchema } from "../db/bootstrap";
 import { resolveInrAmount } from "./openrouter";
 import { resolveWithProofread } from "./proofread";
+import { pushToVps } from "../sync/push-vps";
 
 const BATCH_SIZE = 500;
 const CURSOR_KEY = "chat_db_last_rowid";
@@ -223,6 +224,11 @@ async function main(): Promise<void> {
   );
 
   await setConfig(LAST_POLL_AT_KEY, new Date().toISOString());
+  try {
+    await pushToVps();
+  } catch (err) {
+    logError("vps push failed:", err instanceof Error ? err.message : err);
+  }
   await sendHeartbeat();
 }
 

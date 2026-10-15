@@ -276,3 +276,32 @@ provided for review (see section 11.6).
 `~/scripts/net-watchdog.sh` that clears any `tailscale funnel` rule on port 8300,
 matching the existing forbidden-serve-rule pattern. Apply the diff manually only
 after review.
+
+## 12. push to kharcha-web
+
+After each ingest run, `src/sync/push-vps.ts` POSTs new `transactions` rows
+(id > cursor, batches of 500, all types, tombstones included) to the VPS app at
+`${vps_push_url}/api/ingest` with `Authorization: Bearer <vps_push_token>`. The
+cursor lives in `config.vps_push_last_id`. Manual run: `bun run push:vps`.
+
+Config keys (`config` table):
+
+| key | value |
+|---|---|
+| `vps_push_url` | base URL, e.g. `https://<host>:8790` |
+| `vps_push_token` | bearer token |
+| `vps_push_last_id` | cursor, managed by the push; default `0` |
+
+If `vps_push_url` or `vps_push_token` is missing the push logs
+`vps push skipped: not configured` and does nothing. Set them with:
+
+```bash
+sqlite3 ~/Desktop/code/kharcha-mini/data/kharcha-mini.db <<'SQL'
+INSERT OR REPLACE INTO config (key,value) VALUES ('vps_push_url','https://<host>:8790');
+INSERT OR REPLACE INTO config (key,value) VALUES ('vps_push_token','<token>');
+SQL
+```
+
+**Never commit the URL or token.** This repository is PUBLIC. Keep both only in
+the local sqlite db; do not put them in code, docs, plists, or shell scripts
+tracked by git.
