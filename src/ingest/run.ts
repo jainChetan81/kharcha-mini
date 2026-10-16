@@ -73,7 +73,9 @@ async function upsertTransaction(
   const parserKey = outcome.parserKey ?? allowlistEntry?.parserKey ?? null;
 
   const parsed = outcome.parsed;
-  let amount = parsed?.amount ?? 0;
+  // No amount means no transaction (OTP, balance alert, promo). Skip it; the cursor still advances.
+  if (!parsed || !(parsed.amount > 0)) return;
+  let amount = parsed.amount;
   let needsReview = parsed?.needsReview ?? false;
   const currency = parsed?.currency ?? null;
   const originalAmount = parsed?.originalAmount ?? null;

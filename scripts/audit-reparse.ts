@@ -31,6 +31,7 @@ const EXPENSE_CATEGORIES = [
   "Home",
   "Sports",
   "Work",
+  "Credit Card Payment",
   "Other",
 ];
 const INCOME_CATEGORIES = ["Salary", "Refunds", "Other"];
@@ -84,10 +85,11 @@ STEP 2 — currency and amount. Indian bank messages sometimes quote a FOREIGN c
 - amount_inr: ONLY fill this if the message ITSELF also states an INR-equivalent amount explicitly (e.g. "USD 12.99 (approx INR 1143)"). Otherwise this MUST be null — never estimate or convert currency yourself.
 
 STEP 3 — type. "expense" for debited/spent/sent/paid/withdrawn amounts. "income" for credited/received/refunded amounts. "investment" for mutual fund/SIP/broker/NPS debits (e.g. Zerodha, Groww, NPS, mutual fund SIP, stock broker).
+Completed credit-card bill payments are expenses. Keep them even when card purchases also exist.
 
 STEP 4 — merchant. Clean, human-readable counterparty name. Strip transaction/reference codes (P2M, P2A, CR, DR, numeric ids), UPI handle suffixes (@okaxis, @paytm, @ybl), and card/account residue. Title-case obvious all-caps merchant names but preserve real acronyms (HDFC, IRCTC, NPS). null only if truly no counterparty is identifiable.
 
-STEP 5 — category. Pick the single best match from the provided category list for the given type. Use "Other" only when nothing else plausibly fits.
+STEP 5 — category. Pick the single best match from the provided category list for the given type. Use "Credit Card Payment" for completed credit-card bill payments. Use "Other" only when nothing else plausibly fits.
 
 STEP 6 — date. Strict YYYY-MM-DD. Indian SMS commonly use DD-MM-YY (e.g. "07-04-26" -> "2026-04-07"). If the message text has no date, use the provided "Today" date as a placeholder.
 
