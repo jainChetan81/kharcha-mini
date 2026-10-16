@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { format } from "date-fns";
 import { db } from "../db/connection";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { transactions } from "../db/schema";
 import { getConfig, setConfig } from "../db/config";
 import { getActiveAllowlist, findByRawSenderId } from "./allowlist";
@@ -11,7 +12,7 @@ import { parseMessage, type ParseOutcome } from "../parsers";
 import { DATE_TIME_FORMAT } from "../parsers/utils";
 import { ensureSchema } from "../db/bootstrap";
 import { resolveInrAmount } from "./openrouter";
-import { resolveWithProofread } from "./proofread";
+import { isNonTransactionNotice, resolveWithProofread } from "./proofread";
 import { pushToVps } from "../sync/push-vps";
 
 const BATCH_SIZE = 500;
@@ -73,9 +74,10 @@ async function upsertTransaction(
   const parserKey = outcome.parserKey ?? allowlistEntry?.parserKey ?? null;
 
   const parsed = outcome.parsed;
-  // No amount means no transaction (OTP, balance alert, promo). Skip it; the cursor still advances.
-  if (!parsed || !(parsed.amount > 0)) return;
-  let amount = parsed.amount;
+  // Known non-transactions (OTP, balance alert, promo) are skipped; the cursor still advances.
+  // An unparsed SMS is kept as a failed ₹0 row so audit-reparse can recover it; kharcha-web drops ₹0 rows on ingest.
+  if (isNonTransactionNotice(msg.text, bankName)) return;
+  let amount = parsed?.amount ?? 0;
   let needsReview = parsed?.needsReview ?? false;
   const currency = parsed?.currency ?? null;
   const originalAmount = parsed?.originalAmount ?? null;
@@ -97,6 +99,24 @@ async function upsertTransaction(
   const accountLast4 = parsed?.accountLast4 ?? null;
   const confidence = parsed?.confidence ?? "medium";
 
+  const category = parsed?.category ?? "Other";
+  // One card bill arrives twice: the bank debit (CRED, UPI) and the card's "payment received".
+  // Keep the first; store the second as a tombstone so its GUID still blocks re-ingestion.
+  const pairedBill =
+    category === "Credit Card Payment" &&
+    (await db
+      .select({ id: transactions.id })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.category, "Credit Card Payment"),
+          eq(transactions.amount, amount),
+          isNull(transactions.deletedAt),
+          sql`abs(julianday(${transactions.date}) - julianday(${dateText})) <= 3`,
+        ),
+      )
+      .get());
+
   const fingerprint = computeFingerprint(
     msg.senderId ?? "unknown",
     amount,
@@ -110,7 +130,7 @@ async function upsertTransaction(
       type,
       amount,
       merchant,
-      category: parsed?.category ?? "Other",
+      category,
       date: dateText,
       rawText: msg.text,
       senderId: msg.senderId ?? "unknown",
@@ -126,6 +146,7 @@ async function upsertTransaction(
       currency: currency && currency !== "INR" ? currency : null,
       originalAmount: currency && currency !== "INR" ? originalAmount : null,
       needsReview: needsReview ? 1 : 0,
+      deletedAt: pairedBill ? new Date().toISOString() : null,
     })
     .onConflictDoNothing({ target: transactions.sourceMessageGuid });
 }

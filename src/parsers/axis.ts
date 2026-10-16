@@ -113,6 +113,10 @@ function extractAxisMerchant(body: string): string | null {
   return null;
 }
 
+// CRED bill payments only ("CRED Club", "CRED CCBP UPI"); "CRED Pay" is ordinary spend.
+const cardBillCategory = (merchant: string) =>
+  /\bCRED\s+(?:Club|CCBP)\b/i.test(merchant) ? "Credit Card Payment" : undefined;
+
 // "Amount Debited: INR 75.00 ... Date & Time: 01-04-26, 19:03:35 ... Transaction Info: UPI/P2M/..."
 export const axisUpiDebit: Parser = (body) => {
   const amountMatch = body.match(/Amount Debited:\s*INR ([\d,]+\.?\d*)/i);
@@ -122,9 +126,11 @@ export const axisUpiDebit: Parser = (body) => {
 
   if (!amountMatch || !dateMatch) return null;
 
+  const merchant = extractAxisMerchant(body) ?? "UPI Payment";
   return {
     amount: parseAmount(amountMatch[1]),
-    merchant: extractAxisMerchant(body) ?? "UPI Payment",
+    merchant,
+    category: cardBillCategory(merchant),
     date: parseAxisDate(dateMatch[1], dateMatch[2]),
     type: "expense",
     referenceNumber: extractReferenceNumber(body, REFERENCE_PATTERNS.axis),
@@ -190,6 +196,7 @@ export const axisAccountDebit: Parser = (body) => {
   return {
     amount: parseAmount(match[2]),
     merchant: match[1].trim(),
+    category: cardBillCategory(match[1]),
     date: parseAxisDate(match[3]),
     type: "expense",
     // The hex@provider token is a recurring mandate / subscription id, not a
@@ -297,9 +304,7 @@ export const axisAccountDebitMultiLine: Parser = (body) => {
   return {
     amount: parseAmount(amountMatch[1]),
     merchant,
-    category: /\bCRED(?:\s+(?:Club|CCBP\s+UPI))?\b/i.test(merchant)
-      ? "Credit Card Payment"
-      : undefined,
+    category: cardBillCategory(merchant),
     date: parseAxisDate(dateTimeMatch[1], dateTimeMatch[2]),
     type: "expense",
     referenceNumber: upiMatch?.[1] ?? null,
@@ -350,6 +355,7 @@ export const axisCardSpend: Parser = (body) => {
   return {
     amount,
     merchant: merchantMatch ? merchantMatch[1].trim() : "Card Payment",
+    category: merchantMatch ? cardBillCategory(merchantMatch[1]) : undefined,
     date: parseAxisDate(dateTimeMatch[1], dateTimeMatch[2]),
     type: "expense",
     referenceNumber: null,

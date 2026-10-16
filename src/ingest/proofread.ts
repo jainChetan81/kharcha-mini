@@ -38,7 +38,7 @@ function isEmptyMerchant(merchant: string | null | undefined): boolean {
   return !merchant || merchant.trim().length === 0;
 }
 
-function isNonTransactionNotice(
+export function isNonTransactionNotice(
   body: string,
   bankName: string | null,
 ): boolean {

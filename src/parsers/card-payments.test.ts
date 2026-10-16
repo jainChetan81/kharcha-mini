@@ -48,6 +48,21 @@ describe("credit-card payment receipts", () => {
     });
   });
 
+  test("categorises CRED on the Amount Debited layout", () => {
+    const body =
+      "Amount Debited: INR 5000.00\nAccount Number: XX0532\nDate & Time: 11-08-26, 19:16:00 IST\nTransaction Info: UPI/P2M/857256705289/CRED Club";
+    const outcome = parseMessage("axis", body);
+    expect(outcome.parsed).toMatchObject({ amount: 5000, merchant: "CRED Club", category: "Credit Card Payment" });
+  });
+
+  test("CRED Pay purchases stay ordinary spend", () => {
+    const body =
+      "INR 250.00 debited\nA/c no. XX0532\n11-08-26, 19:16:00\nUPI/P2M/857256705289/CRED Pay\nNot you? SMS BLOCKUPI";
+    const outcome = parseMessage("axis", body);
+    expect(outcome.parsed?.merchant).toBe("CRED Pay");
+    expect(outcome.parsed?.category).toBeUndefined();
+  });
+
   test("keeps an HDFC online card payment acknowledgement", () => {
     const body =
       "HDFC Bank Cardmember, Online Payment of Rs.19209 vide Ref# 2231916484kfVDx was credited to your card ending 2047 On 12/AUG/2026_value Date 11/AUG/2026";
