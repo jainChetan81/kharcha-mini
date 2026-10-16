@@ -301,6 +301,8 @@ async function getDigestToday(): Promise<Response> {
         eq(transactions.type, "expense"),
         gte(transactions.date, todayStart),
         isNull(transactions.deletedAt),
+        // Card bills move money; the purchases already counted. Matches kharcha-web.
+        sql`COALESCE(${transactions.category}, '') <> 'Credit Card Payment'`,
       ),
     )
     .get();

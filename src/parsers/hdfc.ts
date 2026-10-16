@@ -74,6 +74,51 @@ function withHdfcGuard(parser: Parser): Parser {
   };
 }
 
+// "PAYMENT OF Rs. 19209.00 RECEIVED TOWARDS YOUR CREDIT CARD ENDING WITH 2047 ON 11-8-2026"
+export const hdfcCreditCardPayment: Parser = (body) => {
+  const match = body.match(
+    /PAYMENT\s+OF\s+Rs\.?\s*([\d,]+\.?\d*)\s+RECEIVED\s+TOWARDS\s+YOUR\s+CREDIT\s+CARD\s+ENDING\s+WITH\s+(\d{4})\s+ON\s+(\d{1,2}-\d{1,2}-\d{4})/i,
+  );
+  if (!match) return null;
+
+  return {
+    amount: parseAmount(match[1]),
+    merchant: "HDFC Credit Card",
+    category: "Credit Card Payment",
+    date: parseHdfcDate(match[3]),
+    type: "expense",
+    referenceNumber: extractReferenceNumber(body, REFERENCE_PATTERNS.hdfc),
+    accountLast4: match[2],
+    confidence: "high",
+  };
+};
+
+// "Online Payment of Rs.19209 vide Ref# ... was credited to your card ending 2047"
+export const hdfcOnlineCreditCardPayment: Parser = (body) => {
+  const match = body.match(
+    /Online\s+Payment\s+of\s+Rs\.?\s*([\d,]+\.?\d*)\s+vide\s+Ref#\s*([A-Z0-9]+)\s+was\s+credited\s+to\s+your\s+card\s+ending\s+(\d{4})/i,
+  );
+  const valueDateMatch = body.match(
+    /value\s+Date\s+(\d{1,2}\/[A-Z]{3}\/\d{4})/i,
+  );
+  const postingDateMatch = body.match(
+    /\bOn\s+(\d{1,2}\/[A-Z]{3}\/\d{4})/i,
+  );
+  const date = valueDateMatch?.[1] ?? postingDateMatch?.[1];
+  if (!match || !date) return null;
+
+  return {
+    amount: parseAmount(match[1]),
+    merchant: "HDFC Credit Card",
+    category: "Credit Card Payment",
+    date: parseHdfcDate(date.replaceAll("/", "-")),
+    type: "expense",
+    referenceNumber: match[2].toUpperCase(),
+    accountLast4: match[3],
+    confidence: "high",
+  };
+};
+
 // "Rs.X debited from your HDFC Bank ... ending 1234 towards merchant on DD Mon, YYYY"
 export const hdfcDebit: Parser = (body) => {
   const match = body.match(
@@ -193,6 +238,8 @@ export const hdfcCreditCard: Parser = (body) => {
 };
 
 export const HDFC_PARSERS: Parser[] = [
+  withHdfcGuard(hdfcCreditCardPayment),
+  withHdfcGuard(hdfcOnlineCreditCardPayment),
   withHdfcGuard(hdfcCardSpent),
   withHdfcGuard(hdfcUpiCreditCard),
   withHdfcGuard(hdfcCreditCard),

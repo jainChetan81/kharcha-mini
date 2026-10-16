@@ -28,6 +28,7 @@ const DEFAULT_CATEGORIES = [
   "Home",
   "Sports",
   "Work",
+  "Credit Card Payment",
   "Salary",
   "Refunds",
   "Other",
@@ -213,7 +214,6 @@ STEP 1 — is_transaction. Set to false for ANY of:
 - Declined / failed transaction alerts
 - Account-linking / registration confirmations
 - Promotional / marketing messages
-- Credit-card BILL PAYMENT confirmations ("payment ... has been received towards your credit card", "payment received on your card") — these are transfers between the user's own accounts, NOT income; the card's individual spends are already recorded one by one, so recording the bill payment double-counts.
 Only set is_transaction: true for a message describing a debit or credit that has ALREADY happened (past tense: "spent", "debited", "credited", "withdrawn", "received", "paid").
 When is_transaction is false, still fill every other field with a best-effort placeholder (type: "expense", currency: "INR", original_amount: 0, amount_inr: null, merchant: null, category: "Other", confidence: "low") rather than leaving fields blank.
 
@@ -223,6 +223,7 @@ STEP 2 — currency and amount. Bank SMS sometimes quote a FOREIGN currency (USD
 - amount_inr: ONLY set this if the message ITSELF also states an explicit INR-equivalent (e.g. "USD 12.99 (approx INR 1143)"). Otherwise this MUST be null — never estimate or convert currency yourself.
 
 STEP 3 — type. "expense" for debited/spent/sent/paid/withdrawn. "income" for credited/received/refunded. "investment" for mutual fund/SIP/broker/NPS debits (NACH/ECS debits to clearing corporations, Zerodha, Groww, NPS, mutual fund SIP, stock broker, gold/digigold purchases).
+Completed credit-card bill payments are expenses. Keep them even when card purchases also exist.
 
 STEP 4 — merchant. Clean, human-readable counterparty name. Strip transaction/reference codes (P2M, P2A, CR, DR, numeric ids) and UPI handle suffixes (@okaxis, @paytm, @ybl). Also strip payment-gateway/aggregator prefixes: "PYU*", "RAZ*", "RSP*", "PTM*", "POS ", "WWW " (e.g. "PYU*Swiggy Food" -> "Swiggy", "RAZ*Swiggy" -> "Swiggy"). Map legal-entity names to their consumer brand when unambiguous: "BUNDL TECHNOLOGIES" -> "Swiggy", "Swiggy Instamart PR"/"RSP*INSTAMART" -> "Swiggy Instamart", "YOUTUBEGOOG" -> "YouTube". Title-case obvious all-caps merchant names but preserve real acronyms (HDFC, IRCTC, NPS). null only if truly no counterparty is identifiable.
 
@@ -230,6 +231,7 @@ STEP 5 — category. Pick the single best match from the Categories list for the
 - AI/developer subscriptions (OpenRouter, Anthropic/Claude, OpenAI/ChatGPT, T3 Chat, Cursor, GitHub) -> Work
 - Large recurring NEFT/RTGS credits with a corporate CMS remitter code (Info like "NEFT/CMS<digits>/<code>") -> income, category Salary
 - Cashback / "has been credited" small promotional credits -> income, category Refunds
+- Completed credit-card bill payments -> expense, category Credit Card Payment
 - Food delivery (Swiggy, Zomato) -> Food; quick-commerce groceries (Instamart, Blinkit, Zepto) -> Home; DAZN/Netflix/YouTube/PlayStation/Spotify -> Entertainment
 
 STEP 6 — date. Strict YYYY-MM-DD. Indian SMS commonly use DD-MM-YY, e.g. "07-04-26" -> "2026-04-07". Use the provided Today date only if the message truly has no date.
