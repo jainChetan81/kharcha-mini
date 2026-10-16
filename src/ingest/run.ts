@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { format } from "date-fns";
 import { db } from "../db/connection";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { transactions } from "../db/schema";
 import { getConfig, setConfig } from "../db/config";
 import { getActiveAllowlist, findByRawSenderId } from "./allowlist";
@@ -14,6 +14,7 @@ import { ensureSchema } from "../db/bootstrap";
 import { resolveInrAmount } from "./openrouter";
 import { isNonTransactionNotice, resolveWithProofread } from "./proofread";
 import { pushToVps } from "../sync/push-vps";
+import { pairsWithCardBill } from "./card-bill";
 
 const BATCH_SIZE = 500;
 const CURSOR_KEY = "chat_db_last_rowid";
@@ -75,8 +76,8 @@ async function upsertTransaction(
 
   const parsed = outcome.parsed;
   // Known non-transactions (OTP, balance alert, promo) are skipped; the cursor still advances.
-  // An unparsed SMS is kept as a failed ₹0 row so audit-reparse can recover it; kharcha-web drops ₹0 rows on ingest.
   if (isNonTransactionNotice(msg.text, bankName)) return;
+  // An unparsed SMS is kept as a failed ₹0 row so audit-reparse can recover it; kharcha-web drops ₹0 rows on ingest.
   let amount = parsed?.amount ?? 0;
   let needsReview = parsed?.needsReview ?? false;
   const currency = parsed?.currency ?? null;
@@ -100,22 +101,24 @@ async function upsertTransaction(
   const confidence = parsed?.confidence ?? "medium";
 
   const category = parsed?.category ?? "Other";
-  // One card bill arrives twice: the bank debit (CRED, UPI) and the card's "payment received".
-  // Keep the first; store the second as a tombstone so its GUID still blocks re-ingestion.
-  const pairedBill =
-    category === "Credit Card Payment" &&
-    (await db
-      .select({ id: transactions.id })
+  // One card bill arrives twice: the bank debit (CRED, UPI) and the card's "payment received"
+  // receipt. Pair only a debit with a receipt (same amount, within 3 days), each live row at most
+  // once; store the second side as a tombstone so its GUID still blocks re-ingestion. Two debits
+  // or two receipts with the same amount stay separate payments.
+  let pairedBill = false;
+  if (category === "Credit Card Payment") {
+    const near = await db
+      .select({ merchant: transactions.merchant, deletedAt: transactions.deletedAt })
       .from(transactions)
       .where(
         and(
           eq(transactions.category, "Credit Card Payment"),
           eq(transactions.amount, amount),
-          isNull(transactions.deletedAt),
           sql`abs(julianday(${transactions.date}) - julianday(${dateText})) <= 3`,
         ),
-      )
-      .get());
+      );
+    pairedBill = pairsWithCardBill(near, merchant);
+  }
 
   const fingerprint = computeFingerprint(
     msg.senderId ?? "unknown",
