@@ -70,6 +70,21 @@ as `SWIGGY-S(smsft_or)` will not match a bank entry.
   `bun run ingest` or `bun run src/ingest/run.ts`
 - db inspection: `sqlite3 ~/Desktop/code/kharcha-mini/data/kharcha-mini.db`
 
+## 4a. sync now poller
+
+`launchd/com.chetan.kharcha-mini-poll.plist` runs `src/sync/poll-vps.ts` every
+30 s. It calls kharcha-web `GET /api/mini/poll` with the same `vps_push_url` and
+`vps_push_token` config as the push. That call marks the mini online in
+kharcha-web Settings; when someone pressed Sync now there, it runs one ingest
+and reports back with `?done=1`. Without push config it does nothing.
+
+```bash
+bash launchd/install-poll.sh
+launchctl print gui/$(id -u)/com.chetan.kharcha-mini-poll | grep state
+```
+
+Logs: `~/Library/Logs/kharcha-mini-poll.log` and `.err.log`.
+
 ## 5. kuma heartbeat
 
 Add a Push monitor in Uptime Kuma (`http://mini:3001`) named
