@@ -10,6 +10,7 @@
     "drizzle:studio": "drizzle-kit studio",
     "ingest": "bun run src/ingest/run.ts",
     "push:vps": "bun run src/sync/push-vps.ts",
+    "poll:vps": "bun run src/sync/poll-vps.ts",
     "api": "bun run src/api/server.ts",
     "seed:allowlist": "bun run src/scripts/seed-allowlist.ts",
     "toggle-proofread": "bun run src/scripts/toggle-proofread.ts",
