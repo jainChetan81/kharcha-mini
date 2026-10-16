@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { getConfig } from "../db/config";
 
 const TIMEOUT_MS = 10_000;
+const INGEST_TIMEOUT_MS = 10 * 60_000;
 const RUN_TS = join(import.meta.dir, "../ingest/run.ts");
 
 function log(...parts: unknown[]): void {
@@ -31,10 +32,13 @@ export async function pollVps(): Promise<void> {
     if (!sync) return;
     log("sync requested; running ingest");
     // ponytail: may overlap the 15-min launchd ingest; rows dedupe on source_message_guid.
-    const proc = Bun.spawn([process.execPath, "run", RUN_TS], { stdout: "inherit", stderr: "inherit" });
-    await proc.exited;
+    // A hung ingest would block every later poll (launchd won't start a second copy), so cap it.
+    const proc = Bun.spawn([process.execPath, "run", RUN_TS], { stdout: "inherit", stderr: "inherit", timeout: INGEST_TIMEOUT_MS, killSignal: "SIGKILL" });
+    const code = await proc.exited;
+    // Leave the request pending on failure; the next poll retries it.
+    if (code !== 0) throw new Error(`requested ingest failed (exit ${code})`);
     await poll(url, token, true);
-    log(`sync done (ingest exit ${proc.exitCode})`);
+    log("sync done");
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error(`[${new Date().toISOString()}] vps poll error:`, err instanceof Error ? err.message : err);
