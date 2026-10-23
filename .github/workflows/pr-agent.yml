@@ -1,138 +1,36 @@
+# PR-Agent: auto review on PR open; comment /review, /describe, /improve, or /ask to rerun.
+# Needs repo secret OPENROUTER_KEY. Models follow the OpenRouter policy: DeepSeek V4.1 Flash, GLM 5.3 Flash.
 on:
   pull_request:
-    types: [opened, reopened, ready_for_review, synchronize]
+    types: [opened, reopened, ready_for_review]
   issue_comment:
+    types: [created]
 
-# Actions are pinned to immutable commit SHAs rather than mutable tags. Every
-# job below hands this action both OPENROUTER_KEY and a GITHUB_TOKEN, so a
-# force-pushed tag or a compromised `main` would hand over live credentials.
-# Bump these deliberately; the trailing comment records what each SHA was.
-#
-# Permissions are `contents: read` throughout: PR-Agent only needs to read the
-# diff and write comments. Write access would let a prompt-injected review body
-# reach file-writing commands like /update_changelog.
-#
-# `issue_comment` fires on plain issues too, and this is a public repo, so
-# every comment-triggered job additionally requires the commenter to be an
-# OWNER, MEMBER or COLLABORATOR. Without that gate any stranger could burn
-# paid model credit by commenting `/review` in a loop.
 jobs:
-  # Automatic on PR open/push, or manual by commenting /review on a PR.
-  review_standard:
+  review:
+    # Auto on PR open; on demand when a trusted user comments /review, /describe, /improve, or /ask.
     if: >
-      github.event.sender.type != 'Bot' &&
-      (
-        github.event_name == 'pull_request' ||
-        (
-          github.event.issue.pull_request != null &&
-          startsWith(github.event.comment.body, '/review') &&
-          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
-        )
-      )
+      github.event.sender.type != 'Bot' && (
+        (github.event_name == 'pull_request' && !github.event.pull_request.draft) ||
+        (github.event.issue.pull_request && startsWith(github.event.comment.body, '/') &&
+         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)))
     runs-on: ubuntu-latest
-    name: "PR Review — standard (gpt-5.6-luna)"
+    timeout-minutes: 10
     permissions:
       issues: write
       pull-requests: write
       contents: read
     steps:
-      - uses: the-pr-agent/pr-agent@4a26c38d33d16ea490d6f0dd5c11b06e6c2f2cac # main @ 2026-08-03
+      - uses: the-pr-agent/pr-agent@981344be2755e303df501e18e3f60b848a188a80 # v0.48.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENROUTER__KEY: ${{ secrets.OPENROUTER_KEY }}
-          # gpt-5.6-luna: 50%-off promo price ($0.10/$0.60 per M), 1.05M context — cheaper
-          # than gemini-2.5-flash's normal price, from a frontier lab. Re-check
-          # openrouter.ai/collections/discounted-models before this promo ends.
-          CONFIG__MODEL: "openrouter/openai/gpt-5.6-luna"
-          CONFIG__CUSTOM_MODEL_MAX_TOKENS: "200000"
-          CONFIG__MAX_MODEL_TOKENS: "200000"
-          CONFIG__PROPAGATE_TOOL_ERRORS: "true"
-
-  # Confirmed via live testing: labels alone can't trigger anything. PR-Agent's
-  # container is 100% event-driven (checked its source, github_action_runner.py).
-  # A "labeled" pull_request event is not in its default PR_ACTIONS allowlist, and
-  # overriding that via env var did NOT work either (tested live — still logs
-  # "Skipping action: labeled" even with GITHUB_ACTION_CONFIG__PR_ACTIONS set).
-  # The only mechanism that reliably works (proven across many live tests this
-  # session) is issue_comment + parsing real comment text. So: add the label to
-  # pick which model/tier answers, then comment the actual command yourself.
-  review_feature:
-    if: >
-      github.event_name == 'issue_comment' &&
-      github.event.issue.pull_request != null &&
-      startsWith(github.event.comment.body, '/review') &&
-      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
-      contains(github.event.issue.labels.*.name, 'review:feature')
-    runs-on: ubuntu-latest
-    name: "PR Review — feature depth (gpt-5.6-terra)"
-    permissions:
-      issues: write
-      pull-requests: write
-      contents: read
-    steps:
-      - uses: the-pr-agent/pr-agent@4a26c38d33d16ea490d6f0dd5c11b06e6c2f2cac # main @ 2026-08-03
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OPENROUTER__KEY: ${{ secrets.OPENROUTER_KEY }}
-          # gpt-5.6-terra: 50%-off promo price ($1/$6 per M), 1.05M context — same
-          # tier as claude-sonnet-4.5 for half the cost while the promo lasts.
-          CONFIG__MODEL: "openrouter/openai/gpt-5.6-terra"
-          CONFIG__CUSTOM_MODEL_MAX_TOKENS: "300000"
-          CONFIG__MAX_MODEL_TOKENS: "300000"
-          CONFIG__PROPAGATE_TOOL_ERRORS: "true"
-          PR_REVIEWER__EXTRA_INSTRUCTIONS: >
-            Focus on whether this PR actually delivers the full feature described
-            in its title/description: missing edge cases, incomplete error handling,
-            gaps versus the stated intent, and missing tests.
-
-  review_architecture:
-    if: >
-      github.event_name == 'issue_comment' &&
-      github.event.issue.pull_request != null &&
-      startsWith(github.event.comment.body, '/review') &&
-      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
-      contains(github.event.issue.labels.*.name, 'review:arch')
-    runs-on: ubuntu-latest
-    name: "PR Review — architecture (gemini-2.5-pro)"
-    permissions:
-      issues: write
-      pull-requests: write
-      contents: read
-    steps:
-      - uses: the-pr-agent/pr-agent@4a26c38d33d16ea490d6f0dd5c11b06e6c2f2cac # main @ 2026-08-03
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OPENROUTER__KEY: ${{ secrets.OPENROUTER_KEY }}
-          CONFIG__MODEL: "openrouter/google/gemini-2.5-pro"
-          CONFIG__CUSTOM_MODEL_MAX_TOKENS: "400000"
-          CONFIG__MAX_MODEL_TOKENS: "400000"
-          CONFIG__PROPAGATE_TOOL_ERRORS: "true"
-          PR_REVIEWER__EXTRA_INSTRUCTIONS: >
-            Do an architectural pass: module boundaries, dependency direction,
-            API/contract design, coupling, and long-term maintainability.
-            Do not repeat line-level nitpicks already covered by a standard review.
-
-  # Usage: add the review:plan label, then comment "/ask <your actual question>"
-  # (e.g. "/ask does this PR fully implement the plan in the description?").
-  review_plan:
-    if: >
-      github.event_name == 'issue_comment' &&
-      github.event.issue.pull_request != null &&
-      startsWith(github.event.comment.body, '/ask') &&
-      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
-      contains(github.event.issue.labels.*.name, 'review:plan')
-    runs-on: ubuntu-latest
-    name: "PR Review — plan compliance (gpt-5.6-terra)"
-    permissions:
-      issues: write
-      pull-requests: write
-      contents: read
-    steps:
-      - uses: the-pr-agent/pr-agent@4a26c38d33d16ea490d6f0dd5c11b06e6c2f2cac # main @ 2026-08-03
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OPENROUTER__KEY: ${{ secrets.OPENROUTER_KEY }}
-          CONFIG__MODEL: "openrouter/openai/gpt-5.6-terra"
-          CONFIG__CUSTOM_MODEL_MAX_TOKENS: "300000"
-          CONFIG__MAX_MODEL_TOKENS: "300000"
-          CONFIG__PROPAGATE_TOOL_ERRORS: "true"
+          CONFIG__MODEL: openrouter/deepseek/deepseek-v4.1-flash-1017
+          CONFIG__MODEL_WEAK: openrouter/z-ai/glm-5.3-flash
+          CONFIG__FALLBACK_MODELS: '["openrouter/z-ai/glm-5.3-flash"]'
+          CONFIG__REASONING_EFFORT: high
+          CONFIG__MAX_MODEL_TOKENS: "128000"
+          CONFIG__CUSTOM_MODEL_MAX_TOKENS: "128000"
+          PR_REVIEWER__NUM_MAX_FINDINGS: "3"
+          GITHUB_ACTION_CONFIG__AUTO_DESCRIBE: "false"
+          GITHUB_ACTION_CONFIG__AUTO_IMPROVE: "false"
