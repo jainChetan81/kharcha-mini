@@ -200,97 +200,16 @@ SQL
 
 ## 10. backup
 
-Back up `~/Desktop/code/kharcha-mini/data/kharcha-mini.db` (and `-wal`/`-shm` if
-present). The schema is idempotent on first run, but the transaction data is
-not.
+Not needed. kharcha-web on the VPS is the source of truth (nightly R2 backup);
+this DB is a cache. Rebuild by re-ingesting `chat.db` from cursor 0.
 
-## 11. API access (step 3)
+## 11. API access (retired 2026-11-01)
 
-A small `Bun.serve()` API runs on `127.0.0.1:8300`. It is intentionally **not**
-exposed to the internet by default; see the manual tailnet steps below when you
-are ready.
-
-### 11.1 endpoints
-
-| method | path | auth | description |
-|---|---|---|---|
-| GET | `/health` | none | `{ok: true, lastPollAt}` for Uptime Kuma |
-| GET | `/transactions?since=<id>&limit=<n>` | none | income and expense rows with `id > since`, ordered by id, default limit 200, max 1000 |
-| POST | `/transactions` | none | insert a manual transaction |
-| PATCH | `/transactions/:id` | none | update merchant/category/amount/etc.; merchant changes write a `manual` alias |
-| GET | `/sync/status` | none | `{cursor, lastPollAt, addedSinceLastCheck}` |
-| GET | `/digest/today` | none | `{transactionCount, totalSpend, reviewCount, since}` |
-
-### 11.2 no auth
-
-There is no bearer token. This is a single-user setup, so every route is open
-and the app just calls the URL directly:
-
-```bash
-curl http://127.0.0.1:8300/transactions?since=0
-```
-
-The only thing standing between this data and the internet is the network
-boundary: the server binds to `127.0.0.1` and is reached from the phone over
-Tailscale (section 11.5). **Never** funnel port 8300 — with auth removed, a
-funnel rule puts read *and write* access to the whole transaction table on the
-public internet.
-
-The old Keychain entry (`kharcha-mini-api-token` / `mini`) is now unused. Delete
-it if you want:
-
-```bash
-security delete-generic-password -s kharcha-mini-api-token -a mini
-```
-
-### 11.3 run the API manually
-
-```bash
-cd ~/Desktop/code/kharcha-mini
-bun run api
-```
-
-Logs are written to stdout/stderr. For persistence, install the LaunchAgent
-(next section).
-
-### 11.4 install the LaunchAgent (manual step — not run automatically)
-
-When you are ready to keep the API running:
-
-```bash
-cd ~/Desktop/code/kharcha-mini
-bash launchd/install-api.sh
-```
-
-This installs `com.chetan.kharcha-mini-api` as a `KeepAlive` LaunchAgent and
-kickstarts it. It was **not** installed automatically during this build.
-
-Status and restart:
-
-```bash
-launchctl print gui/$(id -u)/com.chetan.kharcha-mini-api | grep state
-launchctl kickstart -k gui/$(id -u)/com.chetan.kharcha-mini-api
-```
-
-### 11.5 expose on tailnet (manual step — never funnel)
-
-To reach the API from the phone app over Tailscale, run exactly this and verify
-with `tailscale serve status`:
-
-```bash
-tailscale serve --bg --https=8300 http://127.0.0.1:8300
-```
-
-**Never** use `tailscale funnel` for port 8300. The API is intentionally
-tailnet-only. A draft net-watchdog addition to clear a forbidden funnel rule is
-provided for review (see section 11.6).
-
-### 11.6 net-watchdog rule (draft for review)
-
-`scripts/net-watchdog-kharcha-mini.diff` proposes adding a check to
-`~/scripts/net-watchdog.sh` that clears any `tailscale funnel` rule on port 8300,
-matching the existing forbidden-serve-rule pattern. Apply the diff manually only
-after review.
+The `:8300` API (`src/api/server.ts`, `com.chetan.kharcha-mini-api`, tailnet Serve
+`:8300`) is no longer run. Its only client was the retired React Native app; the
+web app reads kharcha-web on the VPS. The Mini only ingests and pushes (section 12).
+The code stays for a rebuild: `bash launchd/install-api.sh`, then
+`tailscale serve --bg --https=8300 http://127.0.0.1:8300`. Never funnel it; it has no auth.
 
 ## 12. push to kharcha-web
 
