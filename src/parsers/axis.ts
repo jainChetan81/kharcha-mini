@@ -367,6 +367,25 @@ export const axisCardSpend: Parser = (body) => {
   };
 };
 
+// "Congratulations! Cashback of INR 455 has been credited to your Axis Bank Flipkart Credit Card XX3266 towards your last month spends"
+// Only the credit counts; the "earned ... will reflect in your next statement" notice would double it.
+export const axisCardCashback: Parser = (body) => {
+  const match = body.match(
+    /Cashback\s+of\s+INR\s+([\d,]+\.?\d*)\s+has\s+been\s+credited\s+to\s+your\s+Axis\s+Bank\s+(.*?)Credit\s+Card\s+(?:no\.\s+)?XX(\d{4})/i,
+  );
+  if (!match) return null;
+  return {
+    amount: parseAmount(match[1]),
+    merchant: `Axis ${match[2].trim()} Card Cashback`.replace(/\s+/g, " "),
+    category: "Refunds",
+    date: null,
+    type: "income",
+    referenceNumber: null,
+    accountLast4: match[3],
+    confidence: "high",
+  };
+};
+
 /** Wrap an Axis parser so non-transaction notices are never matched. */
 function withAxisGuard(parser: Parser): Parser {
   return (body) => {
@@ -399,6 +418,7 @@ export const axisGenericDebit: Parser = (body) => {
 
 export const AXIS_PARSERS: Parser[] = [
   withAxisGuard(axisCreditCardPayment),
+  withAxisGuard(axisCardCashback),
   withAxisGuard(axisUpiDebit),
   withAxisGuard(axisUpiCredit),
   withAxisGuard(axisCreditCard),

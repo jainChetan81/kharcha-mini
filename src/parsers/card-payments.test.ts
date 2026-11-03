@@ -89,3 +89,20 @@ describe("credit-card payment receipts", () => {
     expect(outcome.parsed).toBeNull();
   });
 });
+
+describe("card cashback credits", () => {
+  test("records an Axis cashback credit as income", () => {
+    const outcome = parseMessage(
+      "axis",
+      "Congratulations! Cashback of INR 455 has been credited to your Axis Bank Flipkart Credit Card XX1111 towards your last month spends - Axis Bank",
+    );
+    expect(outcome.parsedBy).toBe("regex");
+    expect(outcome.parsed).toMatchObject({
+      amount: 455,
+      merchant: "Axis Flipkart Card Cashback",
+      category: "Refunds",
+      type: "income",
+      accountLast4: "1111",
+    });
+  });
+});
