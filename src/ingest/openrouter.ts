@@ -3,8 +3,9 @@ import { homedir } from "node:os";
 import { format } from "date-fns";
 import { z } from "zod";
 
-const OPENROUTER_MODEL = "google/gemini-3.5-flash";
-const OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
+// 9Router gateway (VPS) with the restricted `kharcha-mini` key; launchd passes it as AI_API_KEY via vault-run.
+const OPENROUTER_MODEL = process.env.AI_MODEL ?? "ag/gemini-3.8-flash-high";
+const OPENROUTER_ENDPOINT = `${process.env.AI_BASE_URL ?? "https://vps.bullhead-mine.ts.net:20128/v1"}/chat/completions`;
 const OPENROUTER_TIMEOUT_MS = 15_000;
 const OPENROUTER_MAX_CHARS = 2000;
 
@@ -116,7 +117,7 @@ function loadHermesEnv(): Record<string, string> {
 }
 
 function getOpenRouterApiKey(): string | null {
-  return loadHermesEnv().OPENROUTER_API_KEY ?? null;
+  return process.env.AI_API_KEY ?? loadHermesEnv().OPENROUTER_API_KEY ?? null;
 }
 
 export interface OpenRouterParsedTransaction {
@@ -303,7 +304,7 @@ async function callOpenRouterOnce(
       parsed: null,
       raw: null,
       error: "NO_API_KEY",
-      errorMessage: "OPENROUTER_API_KEY not found in ~/.hermes/.env",
+      errorMessage: "AI_API_KEY not set (run under vault-run kharcha-mini.9router-key)",
     };
   }
 
@@ -316,8 +317,7 @@ async function callOpenRouterOnce(
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": "https://kharcha.local",
-        "X-Title": "kharcha-mini",
+        "x-9router-token-saver": "off",
       },
       signal: controller.signal,
       body: JSON.stringify({
@@ -325,13 +325,7 @@ async function callOpenRouterOnce(
         messages: [{ role: "user", content: userContent }],
         temperature: 0,
         max_tokens: 2000,
-        // Google AI Studio's free tier for this model is capped at 5
-        // req/min — any real concurrency (and even light sequential ingest
-        // traffic) blows through it, producing 429s that surface as
-        // misleading "insufficient credits for max_tokens" 402s. Force the
-        // paid Vertex route instead. Found + confirmed during the
-        // 2026-07-17 historical audit (see docs/AUDIT_FINDINGS_2026-07-17.md).
-        provider: { ignore: ["Google AI Studio"] },
+        stream: false,
         response_format: buildResponseSchema(DEFAULT_CATEGORIES),
       }),
     });
@@ -356,7 +350,8 @@ async function callOpenRouterOnce(
         finish_reason?: string;
       }>;
     };
-    const raw = data.choices?.[0]?.message?.content?.trim() ?? null;
+    // 9Router wraps JSON in a ```json fence; strip it before parsing.
+    const raw = data.choices?.[0]?.message?.content?.trim().replace(/^```(?:json)?\s*|\s*```$/g, "") ?? null;
 
     if (!raw) {
       return {

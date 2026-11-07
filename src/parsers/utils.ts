@@ -51,6 +51,8 @@ const INDIAN_DATE_FORMATS = [
   "dd/MM/yyyy",
   "dd-MMM-yy",
   "dd-MMM-yyyy",
+  "dd/MMM/yy",
+  "dd/MMM/yyyy",
   "dd MMM yyyy",
   "dd MMM, yyyy",
   "yyyy-MM-dd",
