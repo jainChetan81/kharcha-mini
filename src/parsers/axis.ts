@@ -42,11 +42,15 @@ function isAxisNonTransactionNotice(body: string): boolean {
     return true;
 
   // Future due / payment-due reminders.
-  if (/is\s+due\s+on\s+\d{2}-\d{2}-\d{2}/i.test(body)) return true;
+  if (
+    !/received\s+towards|\bdebited\b|\bspent\b/i.test(body) &&
+    /(?:is\s+due\s+on\s+\d{2}-\d{2}-\d{2}|payment\s+due|amount\s+due|total\s+due|min(?:imum)?\.?\s*due)/i.test(body)
+  )
+    return true;
 
   // OTP / PIN / account-linking / banking-service / declined notifications.
   if (
-    /\bOTP\b|\bSECRET\s+OTP\b|\bUPI\s+PIN\b|\bInternet\s+Banking\s+Login\s+ID\b|\baccount\s+is\s+being\s+linked\b|\bmessage\s+was\s+incomplete\b|\bhas\s+been\s+declined\b/i.test(
+    /\bOTP\b|\bSECRET\s+OTP\b|\bUPI\s+PIN\b|\bInternet\s+Banking\s+Login\s+ID\b|\baccount\s+is\s+being\s+linked\b|\bmessage\s+was\s+incomplete\b|\bdeclined\b/i.test(
       body,
     )
   ) {
@@ -62,7 +66,7 @@ function isAxisNonTransactionNotice(body: string): boolean {
 // "Payment of INR 99826.95 has been received towards your Axis Bank Credit Card XX3266 on 11-08-26"
 export const axisCreditCardPayment: Parser = (body) => {
   const match = body.match(
-    /Payment\s+of\s+INR\s+([\d,]+\.?\d*)\s+has\s+been\s+received\s+towards\s+your\s+Axis\s+Bank\s+Credit\s+Card\s+(?:XX)?(\d{4})\s+on\s+(\d{2}-\d{2}-\d{2})/i,
+    /Payment\s+of\s+(?:INR|Rs\.?)\s*([\d,]+\.?\d*)\s+has\s+been\s+received\s+towards\s+(?:your\s+)?Axis\s+Bank\s+Credit\s+Card\s+(?:no\.\s*)?(?:XX|ending\s+)?(\d{4})\s+on\s+(\d{2}-\d{2}-\d{2})/i,
   );
   if (!match) return null;
 
@@ -75,6 +79,55 @@ export const axisCreditCardPayment: Parser = (body) => {
     referenceNumber: extractReferenceNumber(body, REFERENCE_PATTERNS.axis),
     accountLast4: match[2],
     confidence: "high",
+  };
+};
+
+// "Debit INR {amount}\nAxis Bank A/c XX{last4}\n{date} {time}\n{payee}..."
+export const axisDebitAlert: Parser = (body) => {
+  const match = body.match(
+    /^Debit\s+INR\s+([\d,]+\.?\d*)\s*\r?\n(?:Axis\s+Bank\s+)?A\/c\s+XX(\d{4})\s*\r?\n(\d{2}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})\s*\r?\n([^\r\n]+)/im,
+  );
+  if (!match) return null;
+
+  const rawPayee = match[5].trim();
+  const date = parseAxisDate(match[3], match[4]);
+  const amount = parseAmount(match[1]);
+  const accountLast4 = match[2];
+
+  // ACH-DR for Indian Clearing Corp (Mutual Fund SIP)
+  if (/ACH-DR-INDIAN\s+CLEARING/i.test(rawPayee)) {
+    return {
+      amount,
+      merchant: "INDIAN CLEARING CORP",
+      date,
+      type: "investment",
+      referenceNumber: extractReferenceNumber(body, REFERENCE_PATTERNS.axis),
+      accountLast4,
+      confidence: "high",
+    };
+  }
+
+  // Card bill auto-debit: "CreditCard Payment XX 2222"
+  if (/CreditCard\s+Payment/i.test(rawPayee)) {
+    return {
+      amount,
+      merchant: "Axis Credit Card",
+      category: "Credit Card Payment",
+      date,
+      type: "expense",
+      referenceNumber: extractReferenceNumber(body, REFERENCE_PATTERNS.axis),
+      accountLast4,
+      confidence: "high",
+    };
+  }
+
+  return {
+    amount,
+    merchant: rawPayee.replace(/^ACH-DR-/, "").trim(),
+    date,
+    type: "expense",
+    referenceNumber: extractReferenceNumber(body, REFERENCE_PATTERNS.axis),
+    accountLast4,
   };
 };
 
@@ -252,12 +305,12 @@ export const axisNachDebit: Parser = (body) => {
 // them (~₹27L) sitting unparsed in `failed` because no parser matched it.
 export const axisNeftCredit: Parser = (body) => {
   const match = body.match(
-    /INR\s+([\d,]+\.?\d*)\s+credited\s+to\s+A\/c\s+no\.\s+XX(\d{4})\s+on\s+(\d{2}-\d{2}-\d{2})\s+at\s+(\d{2}:\d{2}:\d{2})/i,
+    /INR\s+([\d,]+\.?\d*)\s+credited\s+to\s+(?:Axis\s+Bank\s+)?A\/c(?:\s+no\.?)?\s+XX(\d{4})\s+on\s+(\d{2}-\d{2}-\d{2})\s+at\s+(\d{2}:\d{2}:\d{2})/i,
   );
   if (!match) return null;
 
   const infoMatch = body.match(
-    /Info\s*[-:]\s*(?:NEFT|IMPS|RTGS)\/([A-Z0-9]+)\/([^./\n]+)/i,
+    /(?:Info\s*[-:]|Ref:?)\s*(?:NEFT|IMPS|RTGS)\/([A-Z0-9]+)\/([^./\n]+)/i,
   );
 
   return {
@@ -418,6 +471,7 @@ export const axisGenericDebit: Parser = (body) => {
 
 export const AXIS_PARSERS: Parser[] = [
   withAxisGuard(axisCreditCardPayment),
+  withAxisGuard(axisDebitAlert),
   withAxisGuard(axisCardCashback),
   withAxisGuard(axisUpiDebit),
   withAxisGuard(axisUpiCredit),

@@ -106,3 +106,84 @@ describe("card cashback credits", () => {
     });
   });
 });
+
+describe("Axis NEFT salary credit", () => {
+  test("records an Axis NEFT credit with new format as income", () => {
+    const body =
+      "INR 250000.00 credited to Axis Bank A/c XX1234 on 30-09-26 at 13:07:01 IST. Ref: NEFT/CMS123456789/HACK.View bal: https://ccm.axis.bank.in/AXISBK/xxxx";
+    const outcome = parseMessage("axis", body);
+
+    expect(outcome.parsedBy).toBe("regex");
+    expect(outcome.parsed).toMatchObject({
+      amount: 250000,
+      merchant: "HACK",
+      date: "2026-09-30 13:07",
+      type: "income",
+      referenceNumber: "CMS123456789",
+      accountLast4: "1234",
+    });
+  });
+});
+
+describe("HDFC refunds and reversals", () => {
+  test("records an HDFC card reversal as income refund", () => {
+    const body =
+      "Transaction Reversed!On HDFC Bank CREDIT Card xx1111 Amt: Rs.49.76 By MODAL.COM On 2026-08-25:18:00:46";
+    const outcome = parseMessage("hdfc", body);
+
+    expect(outcome.parsedBy).toBe("regex");
+    expect(outcome.parsed).toMatchObject({
+      amount: 49.76,
+      merchant: "MODAL.COM",
+      category: "Refunds",
+      date: "2026-08-25 18:00",
+      type: "income",
+      accountLast4: "1111",
+    });
+  });
+
+  test("records an HDFC card refund as income refund", () => {
+    const body =
+      "Alert! Rs. 162 refunded by PAY*SWIGGY FOOD        BANGALORE     KAR on 29/AUG/2026 & adjusted against HDFC Bank Credit Card 1111 View updated balance here: https://...";
+    const outcome = parseMessage("hdfc", body);
+
+    expect(outcome.parsedBy).toBe("regex");
+    expect(outcome.parsed).toMatchObject({
+      amount: 162,
+      merchant: "PAY*SWIGGY FOOD BANGALORE KAR",
+      category: "Refunds",
+      date: "2026-08-29 00:00",
+      type: "income",
+      accountLast4: "1111",
+    });
+  });
+});
+
+describe("non-transaction notice guards", () => {
+  test("skips HDFC AutoPay (E-mandate) debit alert", () => {
+    const body =
+      "AutoPay (E-mandate) Success! For ExampleCo.. Txn Amt:INR599.19 Dt:02/09/2026 Via:HDFC Bank CC 1111 Mandate ID: MANDATE01 Not You? To Block+Reissue Call 18000000000/SMS BLOCK CC 1111 to 919876543210";
+    const outcome = parseMessage("hdfc", body);
+
+    expect(outcome.parsedBy).toBe("failed");
+    expect(outcome.parsed).toBeNull();
+  });
+
+  test("skips HDFC payment pending reminder", () => {
+    const body =
+      "Alert! Payment pending of Rs 2700 for your HDFC Bank Credit Card 1111. Pay now: https://... Ignore if paid";
+    const outcome = parseMessage("hdfc", body);
+
+    expect(outcome.parsedBy).toBe("failed");
+    expect(outcome.parsed).toBeNull();
+  });
+
+  test("skips Standing Instruction declined notice", () => {
+    const body =
+      "Standing Instruction declined for INR 500 on your HDFC Bank Credit Card ending 1111";
+    const outcome = parseMessage("hdfc", body);
+
+    expect(outcome.parsedBy).toBe("failed");
+    expect(outcome.parsed).toBeNull();
+  });
+});

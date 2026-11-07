@@ -24,8 +24,9 @@ function isHdfcNonTransactionNotice(body: string): boolean {
     return true;
 
   // E-mandate / upcoming / scheduled / conditional future debits.
+  // AutoPay (E-mandate) debits are skipped as non-transactions because card sends a separate Spent SMS.
   if (
-    /(?:e-?mandate|upcoming\s+(?:mandate|debit|payment|transaction)|will\s+be\s+(?:debited|charged|auto-?debited)|scheduled\s+(?:for|on)|shall\s+be\s+debited)/i.test(
+    /(?:e-?mandate|auto\s*pay\s*(?:\(e-?mandate\)|activ)|upcoming\s+(?:mandate|debit|payment|transaction)|will\s+be\s+(?:debited|charged|auto-?debited)|scheduled\s+(?:for|on)|shall\s+be\s+debited)/i.test(
       body,
     )
   ) {
@@ -40,7 +41,8 @@ function isHdfcNonTransactionNotice(body: string): boolean {
 
   // Payment-due / overdue / reminder messages (including PayZapp links).
   if (
-    /(?:amount\s+due|total\s+due|min\.?\s*due|pay\s+(?:by|instantly\s+by)|reminder!|is\s+(?:over)?due|clear\s+your\s+dues|link\s+to\s+quickly\s+pay)/i.test(
+    !/received\s+towards|\bdebited\b|\bspent\b/i.test(body) &&
+    /(?:amount\s+due|total\s+due|min\.?\s*due|pay\s+(?:by|instantly\s+by|now[:\s])|reminder!|is\s+(?:over)?due|clear\s+your\s+dues|link\s+to\s+quickly\s+pay|payment\s+pending|pending\s+of\s+(?:Rs\.?|INR)|ignore\s+if\s+paid)/i.test(
       body,
     )
   ) {
@@ -53,7 +55,7 @@ function isHdfcNonTransactionNotice(body: string): boolean {
 
   // OTP / PIN / account-linking / declined notifications.
   if (
-    /\bOTP\b|\bis\s+your\s+OTP\b|\bUPI\s+PIN\b|\bInternet\s+Banking\s+Login\s+ID\b|\baccount\s+is\s+being\s+linked\b|\bmessage\s+was\s+incomplete\b|\bhas\s+been\s+declined\b/i.test(
+    /\bOTP\b|\bis\s+your\s+OTP\b|\bUPI\s+PIN\b|\bInternet\s+Banking\s+Login\s+ID\b|\baccount\s+is\s+being\s+linked\b|\bmessage\s+was\s+incomplete\b|\bdeclined\b/i.test(
       body,
     )
   ) {
@@ -85,7 +87,7 @@ export const hdfcCreditCardPayment: Parser = (body) => {
     amount: parseAmount(match[1]),
     merchant: "HDFC Credit Card",
     category: "Credit Card Payment",
-    date: parseHdfcDate(match[3]),
+    date: parseHdfcDate(match[3].replaceAll("/", "-")),
     type: "expense",
     referenceNumber: extractReferenceNumber(body, REFERENCE_PATTERNS.hdfc),
     accountLast4: match[2],
@@ -193,6 +195,44 @@ export const hdfcCardSpent: Parser = (body) => {
   };
 };
 
+// "Transaction Reversed!On HDFC Bank CREDIT Card xx1111 Amt: Rs.49.76 By MODAL.COM On 2026-08-25:18:00:46"
+export const hdfcCardReversal: Parser = (body) => {
+  const match = body.match(
+    /Transaction\s+Reversed!\s*On\s+HDFC\s+Bank\s+(?:CREDIT\s+)?Card\s+(?:xx|ending\s+)?(\d{4})\s+Amt:\s*(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s+By\s+(.+?)\s+On\s+(\d{4}-\d{2}-\d{2}):(\d{2}:\d{2}:\d{2})/i,
+  );
+  if (!match) return null;
+
+  return {
+    amount: parseAmount(match[2]),
+    merchant: match[3].trim(),
+    category: "Refunds",
+    date: parseHdfcDate(match[4], match[5]),
+    type: "income",
+    referenceNumber: extractReferenceNumber(body, REFERENCE_PATTERNS.hdfc),
+    accountLast4: match[1],
+    confidence: "high",
+  };
+};
+
+// "Alert! Rs. 162 refunded by PAY*SWIGGY FOOD ... on 29/AUG/2026 & adjusted against HDFC Bank Credit Card 1111"
+export const hdfcRefund: Parser = (body) => {
+  const match = body.match(
+    /(?:Alert!\s*)?(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s+refunded\s+by\s+(.+?)\s+on\s+(\d{1,2}[-/][A-Za-z]{3}[-/]\d{2,4}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\s+(?:&|and)\s+adjusted\s+against\s+HDFC\s+Bank\s+Credit\s+Card\s+(?:xx|ending\s+)?(\d{4})/i,
+  );
+  if (!match) return null;
+
+  return {
+    amount: parseAmount(match[1]),
+    merchant: match[2].replace(/\s+/g, " ").trim(),
+    category: "Refunds",
+    date: parseHdfcDate(match[3]),
+    type: "income",
+    referenceNumber: extractReferenceNumber(body, REFERENCE_PATTERNS.hdfc),
+    accountLast4: match[4],
+    confidence: "high",
+  };
+};
+
 // "Your HDFC Bank Credit Card ending 1234 has been used for Rs.2500 at MERCHANT on DD-Mon-YYYY"
 // "Thank you for using your HDFC Bank Credit Card ending 1234 for Rs 999.00 at MERCHANT on DD/MM/YYYY"
 export const hdfcCreditCard: Parser = (body) => {
@@ -241,6 +281,8 @@ export const HDFC_PARSERS: Parser[] = [
   withHdfcGuard(hdfcCreditCardPayment),
   withHdfcGuard(hdfcOnlineCreditCardPayment),
   withHdfcGuard(hdfcCardSpent),
+  withHdfcGuard(hdfcCardReversal),
+  withHdfcGuard(hdfcRefund),
   withHdfcGuard(hdfcUpiCreditCard),
   withHdfcGuard(hdfcCreditCard),
   withHdfcGuard(hdfcDebit),

@@ -14,7 +14,8 @@ import { ensureSchema } from "../db/bootstrap";
 import { resolveInrAmount } from "./openrouter";
 import { isNonTransactionNotice, resolveWithProofread } from "./proofread";
 import { pushToVps } from "../sync/push-vps";
-import { pairsWithCardBill } from "./card-bill";
+import { isCardBillNotice, pairsWithCardBill } from "./card-bill";
+import { isAchDrAlert, isIndianClearing, isNachNotice, pairsWithAchDebit } from "./sip";
 
 const BATCH_SIZE = 500;
 const CURSOR_KEY = "chat_db_last_rowid";
@@ -76,7 +77,9 @@ async function upsertTransaction(
 
   const parsed = outcome.parsed;
   // Known non-transactions (OTP, balance alert, promo) are skipped; the cursor still advances.
-  if (isNonTransactionNotice(msg.text, bankName)) return;
+  // Card bill notices (amount + due date) are kept as ₹0 tombstones so kharcha-web's Cards view can read the latest bill.
+  const isBill = isCardBillNotice(msg.text);
+  if (isNonTransactionNotice(msg.text, bankName) && !isBill) return;
   // An unparsed SMS is kept as a failed ₹0 row so audit-reparse can recover it; kharcha-web drops ₹0 rows on ingest.
   let amount = parsed?.amount ?? 0;
   let needsReview = parsed?.needsReview ?? false;
@@ -120,6 +123,24 @@ async function upsertTransaction(
     pairedBill = pairsWithCardBill(near, merchant);
   }
 
+  // One SIP debit sends two SMS: the "Debit INR ... ACH-DR" alert (amount matches the bank
+  // statement) and a later "NACH debit" notice (amount sometimes wrong). Keep the ACH-DR row;
+  // store the NACH notice as a tombstone when an unpaired ACH-DR row exists the same day.
+  if (!pairedBill && isIndianClearing(merchant) && isNachNotice(msg.text)) {
+    const sameDay = await db
+      .select({ rawText: transactions.rawText, deletedAt: transactions.deletedAt })
+      .from(transactions)
+      .where(
+        and(
+          sql`${transactions.merchant} LIKE '%CLEARING%'`,
+          sql`substr(${transactions.date}, 1, 10) = substr(${dateText}, 1, 10)`,
+        ),
+      );
+    pairedBill = pairsWithAchDebit(
+      sameDay.map((r) => ({ isAchDr: isAchDrAlert(r.rawText), deletedAt: r.deletedAt })),
+    );
+  }
+
   const fingerprint = computeFingerprint(
     msg.senderId ?? "unknown",
     amount,
@@ -149,7 +170,7 @@ async function upsertTransaction(
       currency: currency && currency !== "INR" ? currency : null,
       originalAmount: currency && currency !== "INR" ? originalAmount : null,
       needsReview: needsReview ? 1 : 0,
-      deletedAt: pairedBill ? new Date().toISOString() : null,
+      deletedAt: pairedBill || isBill ? new Date().toISOString() : null,
     })
     .onConflictDoNothing({ target: transactions.sourceMessageGuid });
 }
