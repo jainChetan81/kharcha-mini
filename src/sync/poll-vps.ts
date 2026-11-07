@@ -1,9 +1,14 @@
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { getConfig } from "../db/config";
 
 const TIMEOUT_MS = 10_000;
 const INGEST_TIMEOUT_MS = 10 * 60_000;
 const RUN_TS = join(import.meta.dir, "../ingest/run.ts");
+// Fetch the AI key only for a requested ingest. The 30 s poll does not need it, and
+// wrapping the poll in vault-run started the Bitwarden CLI (~190 MB) every 30 s.
+const VAULT_RUN = join(homedir(), ".local/bin/vault-run");
+const INGEST_CMD = [VAULT_RUN, "kharcha-mini.9router-key", "AI_API_KEY=password", "--", process.execPath, "run", RUN_TS];
 
 function log(...parts: unknown[]): void {
   // eslint-disable-next-line no-console
@@ -33,7 +38,7 @@ export async function pollVps(): Promise<void> {
     log("sync requested; running ingest");
     // ponytail: may overlap the 15-min launchd ingest; rows dedupe on source_message_guid.
     // A hung ingest would block every later poll (launchd won't start a second copy), so cap it.
-    const proc = Bun.spawn([process.execPath, "run", RUN_TS], { stdout: "inherit", stderr: "inherit", timeout: INGEST_TIMEOUT_MS, killSignal: "SIGKILL" });
+    const proc = Bun.spawn(INGEST_CMD, { stdout: "inherit", stderr: "inherit", timeout: INGEST_TIMEOUT_MS, killSignal: "SIGKILL" });
     const code = await proc.exited;
     // Leave the request pending on failure; the next poll retries it.
     if (code !== 0) throw new Error(`requested ingest failed (exit ${code})`);
