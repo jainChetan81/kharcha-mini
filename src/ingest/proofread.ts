@@ -26,7 +26,10 @@ const GENERIC_PLACEHOLDERS = new Set([
   "HDFC Card Payment",
   "HDFC Credit",
   "IMPS Credit",
+  "UPI Credit",
+  "NEFT Credit",
   "Payment",
+  "Unknown",
 ]);
 
 function isGenericPlaceholder(merchant: string | null | undefined): boolean {
@@ -145,12 +148,17 @@ export async function resolveWithProofread(
 
   // 1. Alias lookup always runs: a merchant corrected once should never be
   //    misidentified twice, regardless of whether the AI gate is open.
-  if (initialOutcome.parsed?.merchant) {
-    const alias = await findAlias(initialOutcome.parsed.merchant);
+  //    A generic placeholder ("Card Payment", "UPI Payment") is not a
+  //    merchant: one alias on it renamed every later card spend to
+  //    "Openrouter" (2026-11-25 audit). Placeholders never use aliases.
+  const initialMerchant = initialOutcome.parsed?.merchant;
+  const aliasable = !!initialMerchant && !isGenericPlaceholder(initialMerchant);
+  if (aliasable && initialMerchant) {
+    const alias = await findAlias(initialMerchant);
     if (alias) {
       await incrementHitCount(alias.id);
       log(
-        `skipped-via-alias: "${initialOutcome.parsed.merchant}" -> "${alias.canonicalMerchant}"`,
+        `skipped-via-alias: "${initialMerchant}" -> "${alias.canonicalMerchant}"`,
       );
       return applyAlias(initialOutcome, alias);
     }
@@ -177,9 +185,8 @@ export async function resolveWithProofread(
   //     Confirmed necessary by the 2026-07-17 audit: a fresh AI call with no
   //     alias context recategorized known recurring person-name merchants
   //     (e.g. a tiffin vendor paid by UPI) from "Food" to "Other".
-  const aliasHint = initialOutcome.parsed?.merchant
-    ? await findAlias(initialOutcome.parsed.merchant)
-    : null;
+  const aliasHint =
+    aliasable && initialMerchant ? await findAlias(initialMerchant) : null;
 
   // 4. Call OpenRouter.
   log("fired");
@@ -217,7 +224,8 @@ export async function resolveWithProofread(
     //    placeholders resolve instantly. The raw_pattern should be the merchant
     //    the regex produced (e.g. "UPI Payment"), not the AI-corrected one, so
     //    the next identical regex hit matches.
-    if (result.parsed.merchant) {
+    //    Never for a placeholder: its next hit is a different merchant.
+    if (result.parsed.merchant && (aliasable || !initialMerchant)) {
       await upsertAlias({
         rawMerchant: initialOutcome.parsed?.merchant ?? result.parsed.merchant,
         canonicalMerchant: result.parsed.merchant,
@@ -236,4 +244,4 @@ export async function resolveWithProofread(
   }
 }
 
-export { GENERIC_PLACEHOLDERS, normalizeMerchant };
+export { GENERIC_PLACEHOLDERS, isGenericPlaceholder, normalizeMerchant };

@@ -7,6 +7,7 @@ import { ensureSchema } from "../db/bootstrap";
 import { transactions, merchantAliases } from "../db/schema";
 import { getConfig } from "../db/config";
 import { normalizeMerchant, upsertAlias } from "../db/merchant-aliases";
+import { isGenericPlaceholder } from "../ingest/proofread";
 import { DATE_TIME_FORMAT } from "../parsers/utils";
 
 const DEFAULT_PORT = 8300;
@@ -236,7 +237,8 @@ async function updateTransaction(req: Request, id: string): Promise<Response> {
   // takes precedence over any auto alias.
   if (data.merchant !== undefined && data.merchant !== existing.merchant) {
     const rawPattern = normalizeMerchant(existing.merchant);
-    if (rawPattern) {
+    // A placeholder ("Card Payment") stands for many merchants; never alias it.
+    if (rawPattern && !isGenericPlaceholder(existing.merchant)) {
       await upsertAlias({
         rawMerchant: existing.merchant,
         canonicalMerchant: data.merchant,
