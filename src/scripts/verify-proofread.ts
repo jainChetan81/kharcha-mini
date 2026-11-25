@@ -38,15 +38,15 @@ async function main(): Promise<void> {
     // eslint-disable-next-line no-console
     console.log(`OK: ${KEY} defaults OFF (${enabled ?? "unset"})`);
 
-    // 2. Alias exact-match lookup and hit_count increment.
+    // 2. Alias exact-match lookup and hit_count increment, on a real merchant.
     await upsertAlias({
-      rawMerchant: "UPI Payment",
+      rawMerchant: "SWIGGY",
       canonicalMerchant: "Swiggy",
       category: "Food",
       source: "manual",
     });
 
-    const aliasBefore = await findAlias("UPI Payment");
+    const aliasBefore = await findAlias("SWIGGY");
     assert(aliasBefore !== null, "alias should exist after upsert");
     assert(aliasBefore.canonicalMerchant === "Swiggy", "canonical merchant mismatch");
     const hitsBefore = aliasBefore.hitCount;
@@ -57,25 +57,36 @@ async function main(): Promise<void> {
     assert(initialOutcome.parsedBy === "regex", "regex should match the Axis UPI debit template");
     assert(initialOutcome.parsed?.merchant === "SWIGGY", `expected SWIGGY, got ${initialOutcome.parsed?.merchant}`);
 
-    // This message does NOT trigger the generic placeholder path because the
-    // regex already extracted a real merchant. Use a message where the regex
-    // cannot extract a specific merchant to test alias skip.
-    const genericSms =
-      "Amount Debited: INR 299.00 Date & Time: 07-04-26, 12:30:00 Transaction Info: UPI/P2M/123456";
-    const genericOutcome = parseMessage("axis", genericSms);
-    assert(genericOutcome.parsed?.merchant === "UPI Payment", `expected generic UPI Payment, got ${genericOutcome.parsed?.merchant}`);
-
-    const resolved = await resolveWithProofread(genericSms, "Axis Bank", genericOutcome, new Date());
+    const resolved = await resolveWithProofread(realMerchantSms, "Axis Bank", initialOutcome, new Date());
     assert(resolved.parsedBy === "regex", "alias resolution keeps parsedBy=regex");
     assert(resolved.parsed?.merchant === "Swiggy", `expected canonical Swiggy, got ${resolved.parsed?.merchant}`);
     assert(resolved.parsed?.category === "Food", `expected Food category, got ${resolved.parsed?.category}`);
     assert(resolved.parsed?.confidence === "high", `expected high confidence from alias, got ${resolved.parsed?.confidence}`);
 
-    const aliasAfter = await findAlias("UPI Payment");
+    const aliasAfter = await findAlias("SWIGGY");
     assert(aliasAfter !== null, "alias should still exist");
     assert(aliasAfter.hitCount === hitsBefore + 1, `expected hit_count ${hitsBefore + 1}, got ${aliasAfter.hitCount}`);
     // eslint-disable-next-line no-console
     console.log("OK: alias exact-match lookup works and hit_count incremented");
+
+    // 2b. A placeholder alias is never applied. One "Card Payment" alias named
+    //     every Axis card spend "Openrouter" (2026-11-25 audit).
+    await upsertAlias({
+      rawMerchant: "UPI Payment",
+      canonicalMerchant: "Wrong Shop",
+      category: "Food",
+      source: "auto",
+    });
+    const genericSms =
+      "Amount Debited: INR 299.00 Date & Time: 07-04-26, 12:30:00 Transaction Info: UPI/P2M/123456";
+    const genericOutcome = parseMessage("axis", genericSms);
+    assert(genericOutcome.parsed?.merchant === "UPI Payment", `expected generic UPI Payment, got ${genericOutcome.parsed?.merchant}`);
+    const genericResolved = await resolveWithProofread(genericSms, "Axis Bank", genericOutcome, new Date());
+    assert(genericResolved.parsed?.merchant === "UPI Payment", `placeholder alias must not apply, got ${genericResolved.parsed?.merchant}`);
+    const placeholderAlias = await findAlias("UPI Payment");
+    assert(placeholderAlias?.hitCount === 1, "placeholder alias hit_count must not change");
+    // eslint-disable-next-line no-console
+    console.log("OK: placeholder alias is never applied");
 
     // 3. Verify normalization is used consistently.
     const normalized = normalizeMerchant("UPI Payment");

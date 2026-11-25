@@ -140,22 +140,24 @@ export const axisDebitAlert: Parser = (body) => {
 function extractAxisMerchant(body: string): string | null {
   // Stop the merchant capture at sentence punctuation, a Ref/UTR keyword, or
   // another UPI segment so we don't swallow the rest of the SMS.
+  // The name may hold any character but "/" and a line break: "&", "-" and
+  // accents used to drop the merchant to the "UPI Payment" placeholder.
   const stop = String.raw`(?:\.|,|\n|\s+(?:Ref|RRN|UTR|Txn))`;
   const patterns = [
     new RegExp(
-      `Transaction Info:\\s*UPI\\/[A-Z0-9]+\\/[0-9]+\\/([A-Za-z][\\w\\s.]*?)(?=\\s*(?:${stop}|$))`,
+      `Transaction Info:\\s*UPI\\/[A-Z0-9]+\\/[0-9]+\\/([A-Za-z][^\\r\\n/]*?)(?=\\s*(?:${stop}|$))`,
       "i",
     ),
     new RegExp(
-      `Transaction Info:\\s*UPI\\/[A-Z0-9]+\\/([A-Za-z][\\w\\s.]*?)(?=\\s*(?:${stop}|$))`,
+      `Transaction Info:\\s*UPI\\/[A-Z0-9]+\\/([A-Za-z][^\\r\\n/]*?)(?=\\s*(?:${stop}|$))`,
       "i",
     ),
     new RegExp(
-      `UPI\\/[A-Z0-9]+\\/[0-9]+\\/([A-Za-z][\\w\\s.]*?)(?=\\s*(?:${stop}|$))`,
+      `UPI\\/[A-Z0-9]+\\/[0-9]+\\/([A-Za-z][^\\r\\n/]*?)(?=\\s*(?:${stop}|$))`,
       "i",
     ),
     new RegExp(
-      `UPI\\/[A-Z0-9]+\\/([A-Za-z][\\w\\s.]*?)(?=\\s*(?:${stop}|$))`,
+      `UPI\\/[A-Z0-9]+\\/([A-Za-z][^\\r\\n/]*?)(?=\\s*(?:${stop}|$))`,
       "i",
     ),
   ];
@@ -369,6 +371,8 @@ export const axisAccountDebitMultiLine: Parser = (body) => {
 // "Spent\nCard no. XX{last4}\nUSD {amount}\n{date} {time}\n{merchant}\nAvl Lmt INR ..."
 // "Spent USD {amount}\nAxis Bank Card no. XX{last4}\n{date} {time} IST\n{merchant}\nAvl Limit: INR ..."
 // "Spent INR {amount}\nAxis Bank Card no. XX{last4}\n{date} {time} IST\n{merchant}\nAvl Limit: INR ..."
+// "Spent INR {amount} \nusing Axis Bank Credit Card no. XX{last4} on {date} {time} IST at \n{merchant}. \nAvl limit: INR ..."
+// The last layout (since 2026-10-18) also arrives flattened to one line.
 export const axisCardSpend: Parser = (body) => {
   if (!/^Spent\b/im.test(body)) return null;
 
@@ -377,7 +381,7 @@ export const axisCardSpend: Parser = (body) => {
   // and storing the bare number as INR was the 2026-07-17 audit's
   // foreign-currency bug (23 rows, every USD-billed subscription affected).
   const sameLineAmount = body.match(
-    /^Spent\s+(INR|Rs\.?|USD|EUR|GBP)\s*([\d,]+\.?\d*)\s*$/im,
+    /^Spent\s+(INR|Rs\.?|USD|EUR|GBP)\s*([\d,]+\.?\d*)(?=\s*$|\s+using\b)/im,
   );
   const currencyLineAmount = body.match(
     /^(INR|Rs\.?|USD|EUR|GBP)\s*([\d,]+\.?\d*)\s*$/im,
@@ -389,14 +393,23 @@ export const axisCardSpend: Parser = (body) => {
   );
   const accountMatch = body.match(/Card\s+no\.\s+XX(\d{4})/i);
 
-  // Merchant is the line immediately after the date/time line.
+  // Merchant is the line immediately after the date/time line, or the text
+  // between "at" and "Avl limit" in the "using ... at {merchant}." layout.
+  // Without the second form every such spend became the "Card Payment"
+  // placeholder (2026-11-25 audit).
   const merchantMatch = dateTimeMatch
-    ? body.match(
+    ? (body.match(
         new RegExp(
           `${dateTimeMatch[2]}(?:\\s+IST)?\\s*\\r?\\n([A-Z][A-Za-z0-9 ./*&-]{2,40})(?=\\r?\\n)`,
           "i",
         ),
-      )
+      ) ??
+      body.match(
+        new RegExp(
+          `${dateTimeMatch[2]}(?:\\s+IST)?\\s+at\\s+(\\S[^\\r\\n]*?)[\\s.,]*(?:\\r?\\n|\\s+Avl\\s+li?mi?t\\b|$)`,
+          "i",
+        ),
+      ))
     : null;
 
   if (!amountMatch || !dateTimeMatch) return null;
