@@ -157,14 +157,23 @@ resolve instantly the next time the regex emits the same raw merchant string.
 | `hit_count` | incremented on every successful exact-match lookup |
 
 Matching is **exact only** on the normalized `raw_pattern`. There is no fuzzy
-matching, no vector store, and no substring search. To add a manual correction:
+matching, no vector store, and no substring search.
+
+Generic placeholders (`Card Payment`, `UPI Payment` and the rest of
+`GENERIC_PLACEHOLDERS` in `src/ingest/proofread.ts`) never use aliases. A
+placeholder stands for many merchants. One alias `CARD PAYMENT -> Openrouter`
+renamed every Axis card spend from 2026-10-18 to 2026-11-25. Proofread does not
+look up, hint or store an alias for a placeholder, and
+`scripts/repair-placeholder-aliases.ts` repairs rows if one is added by hand.
+
+To add a manual correction for a real merchant string:
 
 ```bash
 sqlite3 ~/Desktop/code/kharcha-mini/data/kharcha-mini.db <<'SQL'
 INSERT OR REPLACE INTO merchant_aliases
   (raw_pattern, canonical_merchant, category, source, hit_count)
 VALUES
-  ('UPI PAYMENT', 'Swiggy', 'Food', 'manual', 0);
+  ('SWIGGY FOOD', 'Swiggy', 'Food', 'manual', 0);
 SQL
 ```
 
